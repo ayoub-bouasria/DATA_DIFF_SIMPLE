@@ -412,10 +412,9 @@ BEGIN
     WHERE PROJECT_ID = :P_PROJECT_ID
       AND TABLE_NAME = :P_TABLE_NAME;
 
-    -- 4) Compter les lignes côté Snowflake sans EXECUTE IMMEDIATE
-    SELECT COUNT(*)
-    INTO v_snow_count
-    FROM IDENTIFIER(:v_snow_table);
+    -- 4) Compter les lignes côté Snowflake avec EXECUTE IMMEDIATE
+    EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || :v_snow_table
+    INTO :v_snow_count;
 
     -- 5) Table temporaire pour récupérer les métriques écrites par les sous-procédures
     CREATE TEMPORARY TABLE IF NOT EXISTS TEMP_COMPARISON_METRICS (
@@ -517,11 +516,7 @@ CREATE OR REPLACE PROCEDURE SP_COMPARE_WITH_PK(
     P_TABLE_NAME VARCHAR,
     P_SNOW_TABLE VARCHAR,
     P_PK_COLS VARCHAR,
-    P_COMPARE_COLS VARCHAR,
-    P_MATCHED_COUNT NUMBER OUTPUT,
-    P_ONLY_SAS NUMBER OUTPUT,
-    P_ONLY_SNOW NUMBER OUTPUT,
-    P_DIFF_VALUES NUMBER OUTPUT
+    P_COMPARE_COLS VARCHAR
 )
 RETURNS VARCHAR
 LANGUAGE SQL
@@ -539,22 +534,30 @@ DECLARE
     v_col VARCHAR;
     v_sas_expr VARCHAR;
     v_snow_expr VARCHAR;
+    v_matched_count NUMBER;
+    v_only_sas NUMBER;
+    v_only_snow NUMBER;
+    v_diff_values NUMBER;
+    v_pk_count INTEGER;
 BEGIN
     -- Parser les colonnes de clé primaire
     v_pk_list := SPLIT(:P_PK_COLS, ',');
+    v_pk_count := ARRAY_SIZE(v_pk_list);
     
     -- Construire la sélection et jointure sur PK
     v_pk_select := '';
     v_pk_join := '';
-    FOR i IN 0 TO ARRAY_SIZE(v_pk_list) - 1 DO
-        v_col := TRIM(v_pk_list[i]);
-        IF i > 0 THEN
+    i := 0;
+    WHILE (i < v_pk_count) DO
+        v_col := TRIM(GET(v_pk_list, i));
+        IF (i > 0) THEN
             v_pk_select := v_pk_select || ' || ''|'' || ';
             v_pk_join := v_pk_join || ' AND ';
         END IF;
         v_pk_select := v_pk_select || 'COALESCE(s.ROW_DATA:' || v_col || '::VARCHAR, '''')';
         v_pk_join := v_pk_join || 's.ROW_DATA:' || v_col || ' = n.' || v_col;
-    END LOOP;
+        i := i + 1;
+    END WHILE;
     
     -- Créer une table temporaire pour les données Snowflake
     v_sql := 'CREATE OR REPLACE TEMPORARY TABLE TEMP_SNOW_DATA AS ' ||
@@ -578,7 +581,7 @@ BEGIN
              '    WHERE ' || v_pk_join || ' ' ||
              '  )';
     EXECUTE IMMEDIATE v_sql;
-    GET DIAGNOSTICS :P_ONLY_SAS = ROW_COUNT;
+    v_only_sas := SQLROWCOUNT;
     
     -- 2. Compter les lignes qui existent uniquement dans Snowflake
     v_sql := 'INSERT INTO RESULTS.COMPARISON_DIFF_DETAILS ' ||
@@ -597,7 +600,7 @@ BEGIN
              '      AND ' || v_pk_join || ' ' ||
              '  )';
     EXECUTE IMMEDIATE v_sql;
-    GET DIAGNOSTICS :P_ONLY_SNOW = ROW_COUNT;
+    v_only_snow := SQLROWCOUNT;
     
     -- 3. Comparer les valeurs pour les lignes qui existent des deux côtés
     IF :P_COMPARE_COLS = 'ALL' THEN
@@ -610,22 +613,24 @@ BEGIN
                  '    AND s.TABLE_NAME = ''' || :P_TABLE_NAME || ''' ' ||
                  '    AND s.ROW_HASH != SHA2(n.ROW_DATA, 256) ' ||
                  ')';
-        EXECUTE IMMEDIATE v_sql INTO :P_DIFF_VALUES;
+        EXECUTE IMMEDIATE v_sql INTO :v_diff_values;
     ELSE
         -- Comparer les colonnes spécifiées
         v_col_list := SPLIT(:P_COMPARE_COLS, ',');
         v_col_compare := '';
         
-        FOR i IN 0 TO ARRAY_SIZE(v_col_list) - 1 DO
-            v_col := TRIM(v_col_list[i]);
-            IF i > 0 THEN
+        i := 0;
+        WHILE (i < ARRAY_SIZE(v_col_list)) DO
+            v_col := TRIM(GET(v_col_list, i));
+            IF (i > 0) THEN
                 v_col_compare := v_col_compare || ' OR ';
             END IF;
             -- Gestion des NULL et normalisation
             v_sas_expr := 'COALESCE(NULLIF(NULLIF(s.ROW_DATA:' || v_col || '::VARCHAR, ''''), ''.''), ''__NULL__'')';
             v_snow_expr := 'COALESCE(n.' || v_col || '::VARCHAR, ''__NULL__'')';
             v_col_compare := v_col_compare || '(' || v_sas_expr || ' != ' || v_snow_expr || ')';
-        END LOOP;
+            i := i + 1;
+        END WHILE;
         
         v_sql := 'SELECT COUNT(*) FROM ( ' ||
                  '  SELECT 1 ' ||
@@ -635,17 +640,21 @@ BEGIN
                  '    AND s.TABLE_NAME = ''' || :P_TABLE_NAME || ''' ' ||
                  '    AND (' || v_col_compare || ') ' ||
                  ')';
-        EXECUTE IMMEDIATE v_sql INTO :P_DIFF_VALUES;
+        EXECUTE IMMEDIATE v_sql INTO :v_diff_values;
     END IF;
     
     -- 4. Calculer les lignes correspondantes
-    SELECT COUNT(*) INTO :P_MATCHED_COUNT
-    FROM STAGING.SAS_STAGING_DATA s
-    JOIN TEMP_SNOW_DATA n ON CASE WHEN v_pk_join != '' THEN TRUE ELSE FALSE END
-    WHERE s.PROJECT_ID = :P_PROJECT_ID 
-      AND s.TABLE_NAME = :P_TABLE_NAME;
+    v_sql := 'SELECT COUNT(*) FROM STAGING.SAS_STAGING_DATA s ' ||
+             'JOIN TEMP_SNOW_DATA n ON ' || v_pk_join || ' ' ||
+             'WHERE s.PROJECT_ID = ''' || :P_PROJECT_ID || ''' ' ||
+             '  AND s.TABLE_NAME = ''' || :P_TABLE_NAME || '''';
+    EXECUTE IMMEDIATE v_sql INTO :v_matched_count;
     
-    :P_MATCHED_COUNT := :P_MATCHED_COUNT - :P_DIFF_VALUES;
+    v_matched_count := v_matched_count - v_diff_values;
+    
+    -- Écrire les métriques dans la table temporaire
+    INSERT INTO TEMP_COMPARISON_METRICS (RUN_ID, PROJECT_ID, TABLE_NAME, MATCHED_COUNT, ONLY_SAS, ONLY_SNOW, DIFF_VALUES)
+    VALUES (:P_RUN_ID, :P_PROJECT_ID, :P_TABLE_NAME, v_matched_count, v_only_sas, v_only_snow, v_diff_values);
     
     -- Nettoyer la table temporaire
     DROP TABLE IF EXISTS TEMP_SNOW_DATA;
@@ -663,11 +672,7 @@ CREATE OR REPLACE PROCEDURE SP_COMPARE_WITHOUT_PK(
     P_PROJECT_ID VARCHAR,
     P_TABLE_NAME VARCHAR,
     P_SNOW_TABLE VARCHAR,
-    P_COMPARE_COLS VARCHAR,
-    P_MATCHED_COUNT NUMBER OUTPUT,
-    P_ONLY_SAS NUMBER OUTPUT,
-    P_ONLY_SNOW NUMBER OUTPUT,
-    P_DIFF_VALUES NUMBER OUTPUT
+    P_COMPARE_COLS VARCHAR
 )
 RETURNS VARCHAR
 LANGUAGE SQL
@@ -676,6 +681,10 @@ AS
 $$
 DECLARE
     v_sql VARCHAR;
+    v_matched_count NUMBER;
+    v_only_sas NUMBER;
+    v_only_snow NUMBER;
+    v_diff_values NUMBER;
 BEGIN
     -- Pour les tables sans PK, on utilise le hash de la ligne complète
     
@@ -697,7 +706,7 @@ BEGIN
              '      WHERE n.ROW_HASH = s.ROW_HASH ' ||
              '    ) ' ||
              ')';
-    EXECUTE IMMEDIATE v_sql INTO :P_MATCHED_COUNT;
+    EXECUTE IMMEDIATE v_sql INTO :v_matched_count;
     
     -- 2. Lignes uniquement dans SAS
     v_sql := 'INSERT INTO RESULTS.COMPARISON_DIFF_DETAILS ' ||
@@ -716,7 +725,7 @@ BEGIN
              '    WHERE n.ROW_HASH = s.ROW_HASH ' ||
              '  )';
     EXECUTE IMMEDIATE v_sql;
-    GET DIAGNOSTICS :P_ONLY_SAS = ROW_COUNT;
+    v_only_sas := SQLROWCOUNT;
     
     -- 3. Lignes uniquement dans Snowflake
     v_sql := 'INSERT INTO RESULTS.COMPARISON_DIFF_DETAILS ' ||
@@ -735,10 +744,14 @@ BEGIN
              '      AND s.ROW_HASH = n.ROW_HASH ' ||
              '  )';
     EXECUTE IMMEDIATE v_sql;
-    GET DIAGNOSTICS :P_ONLY_SNOW = ROW_COUNT;
+    v_only_snow := SQLROWCOUNT;
     
     -- 4. Pas de différences de valeurs car on compare par hash complet
-    :P_DIFF_VALUES := 0;
+    v_diff_values := 0;
+    
+    -- Écrire les métriques dans la table temporaire
+    INSERT INTO TEMP_COMPARISON_METRICS (RUN_ID, PROJECT_ID, TABLE_NAME, MATCHED_COUNT, ONLY_SAS, ONLY_SNOW, DIFF_VALUES)
+    VALUES (:P_RUN_ID, :P_PROJECT_ID, :P_TABLE_NAME, v_matched_count, v_only_sas, v_only_snow, v_diff_values);
     
     -- Nettoyer la table temporaire
     DROP TABLE IF EXISTS TEMP_SNOW_HASHES;
@@ -767,21 +780,13 @@ DECLARE
     v_tables_matched NUMBER := 0;
     v_tables_different NUMBER := 0;
     v_tables_error NUMBER := 0;
-    v_cursor CURSOR FOR 
-        SELECT TABLE_NAME, PRIORITY
-        FROM CONFIG_TABLES
-        WHERE PROJECT_ID = :P_PROJECT_ID AND IS_ACTIVE = TRUE
-        ORDER BY 
-            CASE PRIORITY 
-                WHEN 'HIGH' THEN 1 
-                WHEN 'MEDIUM' THEN 2 
-                ELSE 3 
-            END,
-            TABLE_NAME;
     v_table_name VARCHAR;
     v_priority VARCHAR;
     v_result VARCHAR;
     v_status VARCHAR;
+    v_cursor RESULTSET;
+    v_row_idx INTEGER;
+    v_total_rows INTEGER;
 BEGIN
     -- Générer un ID unique pour ce run
     v_run_id := UUID_STRING();
@@ -807,13 +812,28 @@ BEGIN
     VALUES (v_run_id, 'SP_RUN_COMPARISON', 'INFO', 
             'Starting comparison for project ' || :P_PROJECT_ID || ' with ' || v_table_count || ' tables');
     
+    -- Créer une table temporaire pour les tables à traiter
+    CREATE TEMPORARY TABLE IF NOT EXISTS TEMP_TABLES_TO_PROCESS AS
+    SELECT TABLE_NAME, PRIORITY, ROW_NUMBER() OVER (ORDER BY 
+        CASE PRIORITY 
+            WHEN 'HIGH' THEN 1 
+            WHEN 'MEDIUM' THEN 2 
+            ELSE 3 
+        END,
+        TABLE_NAME) AS ROW_NUM
+    FROM CONFIG_TABLES
+    WHERE PROJECT_ID = :P_PROJECT_ID AND IS_ACTIVE = TRUE;
+    
+    SELECT COUNT(*) INTO v_total_rows FROM TEMP_TABLES_TO_PROCESS;
+    
     -- Traiter chaque table
-    OPEN v_cursor;
-    LOOP
-        FETCH v_cursor INTO v_table_name, v_priority;
-        IF NOT FOUND THEN
-            BREAK;
-        END IF;
+    v_row_idx := 1;
+    WHILE (v_row_idx <= v_total_rows) DO
+        -- Récupérer la table et priorité
+        SELECT TABLE_NAME, PRIORITY 
+        INTO v_table_name, v_priority
+        FROM TEMP_TABLES_TO_PROCESS
+        WHERE ROW_NUM = v_row_idx;
         
         -- Logger le traitement de la table
         INSERT INTO RESULTS.EXECUTION_LOGS (RUN_ID, PROCEDURE_NAME, LOG_LEVEL, LOG_MESSAGE)
@@ -830,13 +850,18 @@ BEGIN
         
         -- Mettre à jour les compteurs
         v_tables_processed := v_tables_processed + 1;
-        CASE v_status
-            WHEN 'IDENTICAL' THEN v_tables_matched := v_tables_matched + 1;
-            WHEN 'DIFFERENT' THEN v_tables_different := v_tables_different + 1;
-            WHEN 'ERROR' THEN v_tables_error := v_tables_error + 1;
-        END CASE;
-    END LOOP;
-    CLOSE v_cursor;
+        IF (v_status = 'IDENTICAL') THEN
+            v_tables_matched := v_tables_matched + 1;
+        ELSEIF (v_status = 'DIFFERENT') THEN
+            v_tables_different := v_tables_different + 1;
+        ELSEIF (v_status = 'ERROR') THEN
+            v_tables_error := v_tables_error + 1;
+        END IF;
+        
+        v_row_idx := v_row_idx + 1;
+    END WHILE;
+    
+    DROP TABLE IF EXISTS TEMP_TABLES_TO_PROCESS;
     
     -- Mettre à jour le run avec les résultats finaux
     UPDATE RESULTS.COMPARISON_RUNS
