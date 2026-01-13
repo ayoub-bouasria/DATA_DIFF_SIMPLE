@@ -413,8 +413,7 @@ BEGIN
       AND TABLE_NAME = :P_TABLE_NAME;
 
     -- 4) Compter les lignes côté Snowflake avec EXECUTE IMMEDIATE
-    EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || :v_snow_table
-    INTO :v_snow_count;
+    EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || :v_snow_table INTO v_snow_count;
 
     -- 5) Table temporaire pour récupérer les métriques écrites par les sous-procédures
     CREATE TEMPORARY TABLE IF NOT EXISTS TEMP_COMPARISON_METRICS (
