@@ -55,6 +55,40 @@ pip install -r requirements.txt
 pip list | grep datacompy
 ```
 
+### Installation sans venv (globale)
+
+Si vous préférez installer les packages directement dans votre Python système (sans environnement virtuel) :
+
+```powershell
+# 1. Naviguer vers le dossier PYTHON
+cd PYTHON
+
+# 2. Installer directement les dépendances
+pip install -r requirements.txt
+
+# Ou installer les packages un par un :
+pip install "datacompy[snowflake]>=0.11.1"
+pip install "snowflake-snowpark-python>=1.11.0"
+pip install "pandas>=2.0.0"
+pip install "python-dotenv>=1.0.0"
+pip install "openpyxl>=3.1.0"
+pip install "xlsxwriter>=3.1.0"
+pip install "click>=8.1.0"
+pip install "pyyaml>=6.0.0"
+
+# 3. Vérifier l'installation
+pip list | findstr datacompy
+python -c "from datacompy import SnowflakeCompare; print('Installation OK')"
+```
+
+**Avantages installation globale** :
+- Pas besoin d'activer un venv à chaque fois
+- Plus simple pour les scripts automatisés
+
+**Inconvénients** :
+- Peut créer des conflits avec d'autres projets Python
+- Difficile à nettoyer si vous voulez désinstaller
+
 ### Dépannage
 
 **Erreur `ModuleNotFoundError: No module named 'datacompy'`**
