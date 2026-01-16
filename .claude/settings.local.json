@@ -7,7 +7,10 @@
       "Bash(dir:*)",
       "Bash(powershell -Command \"Get-ChildItem ''C:\\\\Users\\\\Ayoub BOUASRIA\\\\Desktop\\\\DATA_DIFF\\\\DATA_DIFF_SIMPLE\\\\PYTHON'' -Name\")",
       "Bash(powershell -Command:*)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:capitalone.github.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(pip install:*)"
     ]
   }
 }

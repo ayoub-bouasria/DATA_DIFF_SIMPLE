@@ -1,14 +1,16 @@
 # DATA DIFF PYTHON - Snowflake Table Comparison
 
-Outil Python pour comparer des tables Snowflake en utilisant **datacompy** avec l'intégration native **Snowpark**.
+Outil Python pour comparer des tables Snowflake en utilisant **datacompy** avec **snowflake-connector-python**.
 
-## Avantage: Comparaison côté serveur
+**Compatible avec Python 3.13+**
 
-Ce module utilise `datacompy.SnowflakeCompare` qui effectue les comparaisons **directement dans Snowflake** via Snowpark. Cela signifie:
+## Architecture
 
-- **Pas de transfert de données** vers le client
-- **Performances optimales** pour les grandes tables
-- **Moins de mémoire** utilisée localement
+Ce module utilise `datacompy.Compare` avec `snowflake-connector-python`:
+
+- **Chargement des données** en pandas DataFrames
+- **Comparaison locale** avec datacompy (efficace pour tables petites/moyennes)
+- **Hash comparison** côté serveur pour les grandes tables sans clé primaire
 - Support de la **tolérance numérique** (`abs_tol`, `rel_tol`)
 
 ## Compatibilité Python
@@ -66,9 +68,9 @@ pip install -r requirements.txt
 pip list | grep datacompy
 ```
 
-### Installation avec Conda (Recommandé pour Python 3.13)
+### Installation avec Conda (Alternative)
 
-Pour Python 3.13, conda-forge peut avoir des packages plus récents :
+Si pip échoue pour snowflake-connector-python :
 
 ```bash
 # Créer un environnement conda
@@ -77,8 +79,8 @@ conda create -n datadiff python=3.13
 # Activer l'environnement
 conda activate datadiff
 
-# Installer snowflake-snowpark-python depuis conda-forge
-conda install -c conda-forge snowflake-snowpark-python
+# Installer snowflake-connector-python depuis conda-forge
+conda install -c conda-forge snowflake-connector-python
 
 # Installer le reste via pip
 pip install datacompy pandas openpyxl xlsxwriter click pyyaml python-dotenv
@@ -96,8 +98,8 @@ cd PYTHON
 pip install -r requirements.txt
 
 # Ou installer les packages un par un :
-pip install "datacompy[snowflake]>=0.14.0"
-pip install "snowflake-snowpark-python>=1.23.0"
+pip install "datacompy>=0.14.0"
+pip install "snowflake-connector-python>=3.12.0"
 pip install "pandas>=2.2.0"
 pip install "numpy>=2.1.0"
 pip install "python-dotenv>=1.0.0"
@@ -108,7 +110,7 @@ pip install "pyyaml>=6.0.1"
 
 # 3. Vérifier l'installation
 pip list | findstr datacompy
-python -c "from datacompy import SnowflakeCompare; print('Installation OK')"
+python -c "from datacompy import Compare; print('Installation OK')"
 ```
 
 **Avantages installation globale** :
@@ -135,7 +137,7 @@ Cette erreur signifie que les dépendances ne sont pas installées dans votre en
 2. **Vérifiez les packages installés** :
    ```powershell
    pip list
-   # Doit afficher datacompy, snowflake-snowpark-python, pandas, etc.
+   # Doit afficher datacompy, snowflake-connector-python, pandas, etc.
    ```
 
 3. **Si seul pip est installé**, réinstallez les dépendances :
@@ -150,19 +152,16 @@ Cette erreur signifie que les dépendances ne sont pas installées dans votre en
    pip install --only-binary :all: -r requirements.txt
    ```
 
-**Erreur avec snowflake-snowpark-python sur Python 3.13**
+**Erreur avec snowflake-connector-python sur Python 3.13**
 
-Si pip ne trouve pas de version compatible de snowflake-snowpark-python :
+Si pip ne trouve pas de version compatible :
 
 ```bash
-# Option 1: Utiliser conda-forge (recommandé)
-conda install -c conda-forge snowflake-snowpark-python
+# Option 1: Utiliser conda-forge
+conda install -c conda-forge snowflake-connector-python
 
-# Option 2: Installer depuis la source (si disponible)
-pip install --no-binary snowflake-snowpark-python snowflake-snowpark-python
-
-# Option 3: Vérifier les versions disponibles
-pip index versions snowflake-snowpark-python
+# Option 2: Vérifier les versions disponibles
+pip index versions snowflake-connector-python
 ```
 
 ## Configuration
@@ -307,33 +306,41 @@ PYTHON/
 
 | Aspect | SQL (SP_COMPARE) | Python (datacompy) |
 |--------|------------------|-------------------|
-| Exécution | Dans Snowflake | Snowpark (côté serveur) |
-| Mémoire | Snowflake | Snowflake (via Snowpark) |
+| Exécution | Dans Snowflake | Client (pandas) |
+| Mémoire | Snowflake | Locale (RAM) |
+| Tables volumineuses | Excellent | Limité (utiliser sample_limit) |
 | Rapport | ASCII formaté | Rapport datacompy détaillé |
 | Export | Limité | Excel/CSV/JSON |
 | Tolérance | abs_tol | abs_tol + rel_tol |
 | Analyse | Basique | Colonnes + stats détaillées |
+| Python 3.13 | N/A | Supporté |
 
-## API datacompy.SnowflakeCompare
+## API datacompy.Compare
 
-Le module utilise ces méthodes de datacompy:
+Le module utilise `datacompy.Compare` (version pandas):
 
 ```python
-comparison = SnowflakeCompare(
-    session,                    # Snowpark Session
-    "TABLE1",                   # Nom table 1
-    "TABLE2",                   # Nom table 2
+from datacompy import Compare
+
+# Après chargement des tables en pandas DataFrames
+comparison = Compare(
+    df1=df1,                    # pandas DataFrame
+    df2=df2,                    # pandas DataFrame
     join_columns=["ID"],        # Colonnes de jointure
-    abs_tol=0.01,              # Tolérance absolue
-    rel_tol=0.001,             # Tolérance relative
+    abs_tol=0.01,               # Tolérance absolue
+    rel_tol=0.001,              # Tolérance relative
+    df1_name="TABLE1",          # Nom pour le rapport (optionnel)
+    df2_name="TABLE2",          # Nom pour le rapport (optionnel)
+    ignore_spaces=False,        # Ignorer les espaces (optionnel)
+    ignore_case=False,          # Ignorer la casse (optionnel)
 )
 
 # Méthodes disponibles
 comparison.matches()           # True si tables identiques
 comparison.report()            # Rapport textuel complet
-comparison.df1_unq_rows        # Lignes uniques table 1
-comparison.df2_unq_rows        # Lignes uniques table 2
-comparison.intersect_rows      # Lignes communes
+comparison.df1_unq_rows        # Lignes uniques table 1 (pandas DataFrame)
+comparison.df2_unq_rows        # Lignes uniques table 2 (pandas DataFrame)
+comparison.intersect_rows      # Lignes communes (pandas DataFrame)
 comparison.df1_unq_columns()   # Colonnes uniques table 1
 comparison.df2_unq_columns()   # Colonnes uniques table 2
 ```

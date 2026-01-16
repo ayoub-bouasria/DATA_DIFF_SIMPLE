@@ -2,10 +2,9 @@
 Snowflake Data Comparison Module using datacompy.
 
 This module provides functionality to compare Snowflake tables using the
-datacompy library with native Snowflake/Snowpark integration.
+datacompy library with snowflake-connector-python.
 
-The comparison happens SERVER-SIDE in Snowflake, which is much more efficient
-than loading data into pandas for large tables.
+Compatible with Python 3.13+ (uses pandas-based comparison instead of Snowpark).
 
 Usage:
     from snowflake_compare import SnowflakeTableComparer, quick_compare
@@ -19,7 +18,7 @@ Usage:
         print(result)
 
 Requirements:
-    pip install datacompy[snowflake]
+    pip install datacompy snowflake-connector-python pandas
 """
 
 import pandas as pd
@@ -31,13 +30,13 @@ import hashlib
 import json
 import logging
 
-# Snowpark imports
-from snowflake.snowpark import Session
-from snowflake.snowpark import DataFrame as SnowparkDataFrame
+# Snowflake connector imports
+import snowflake.connector
+from snowflake.connector import DictCursor
 
-# datacompy imports
+# datacompy imports (pandas-based Compare)
 import datacompy
-from datacompy import SnowflakeCompare
+from datacompy import Compare
 
 from config import SnowflakeConfig, ComparisonConfig
 
@@ -118,27 +117,27 @@ class ComparisonResult:
         pk_info = ", ".join(self.primary_key_columns) if self.primary_key_columns else "None (hash)"
 
         lines = [
-            "╔" + "═" * 77 + "╗",
-            "║" + "COMPARISON REPORT (datacompy)".center(77) + "║",
-            "╠" + "═" * 77 + "╣",
-            f"║ ID: {self.comparison_id:<72} ║",
-            f"║ Time: {self.comparison_time.strftime('%Y-%m-%d %H:%M:%S'):<70} ║",
-            "╠" + "═" * 77 + "╣",
-            f"║ TABLE 1: {self.table1_name:<67} ║",
-            f"║ TABLE 2: {self.table2_name:<67} ║",
-            f"║ Join Columns: {pk_info:<62} ║",
-            "╠" + "═" * 77 + "╣",
-            "║ STATISTICS:" + " " * 65 + "║",
-            f"║   - Rows in Table 1:     {self.table1_row_count:>15,}" + " " * 35 + "║",
-            f"║   - Rows in Table 2:     {self.table2_row_count:>15,}" + " " * 35 + "║",
-            f"║   - Matched rows:        {self.matched_rows:>15,}" + " " * 35 + "║",
-            f"║   - Only in Table 1:     {self.rows_only_in_table1:>15,}" + " " * 35 + "║",
-            f"║   - Only in Table 2:     {self.rows_only_in_table2:>15,}" + " " * 35 + "║",
-            f"║   - Different values:    {self.rows_with_diff_values:>15,}" + " " * 35 + "║",
-            "╠" + "═" * 77 + "╣",
-            f"║ RESULT: {'✓' if self.is_identical else '✗'} {status} ({self.match_percentage:.2f}% match)" + " " * (47 - len(status)) + "║",
-            f"║ Execution time: {self.execution_time_seconds:.2f} seconds" + " " * 52 + "║",
-            "╚" + "═" * 77 + "╝",
+            "+" + "=" * 77 + "+",
+            "|" + "COMPARISON REPORT (datacompy)".center(77) + "|",
+            "+" + "=" * 77 + "+",
+            f"| ID: {self.comparison_id:<72} |",
+            f"| Time: {self.comparison_time.strftime('%Y-%m-%d %H:%M:%S'):<70} |",
+            "+" + "=" * 77 + "+",
+            f"| TABLE 1: {self.table1_name:<67} |",
+            f"| TABLE 2: {self.table2_name:<67} |",
+            f"| Join Columns: {pk_info:<62} |",
+            "+" + "=" * 77 + "+",
+            "| STATISTICS:" + " " * 65 + "|",
+            f"|   - Rows in Table 1:     {self.table1_row_count:>15,}" + " " * 35 + "|",
+            f"|   - Rows in Table 2:     {self.table2_row_count:>15,}" + " " * 35 + "|",
+            f"|   - Matched rows:        {self.matched_rows:>15,}" + " " * 35 + "|",
+            f"|   - Only in Table 1:     {self.rows_only_in_table1:>15,}" + " " * 35 + "|",
+            f"|   - Only in Table 2:     {self.rows_only_in_table2:>15,}" + " " * 35 + "|",
+            f"|   - Different values:    {self.rows_with_diff_values:>15,}" + " " * 35 + "|",
+            "+" + "=" * 77 + "+",
+            f"| RESULT: {'OK' if self.is_identical else 'KO'} {status} ({self.match_percentage:.2f}% match)" + " " * (47 - len(status)) + "|",
+            f"| Execution time: {self.execution_time_seconds:.2f} seconds" + " " * 52 + "|",
+            "+" + "=" * 77 + "+",
         ]
         return "\n".join(lines)
 
@@ -149,10 +148,12 @@ class ComparisonResult:
 
 class SnowflakeTableComparer:
     """
-    Compare Snowflake tables using datacompy's native SnowflakeCompare.
+    Compare Snowflake tables using datacompy with snowflake-connector-python.
 
-    This class uses Snowpark to perform comparisons SERVER-SIDE in Snowflake,
-    which is much more efficient for large tables than loading data into pandas.
+    This class loads data from Snowflake into pandas DataFrames and uses
+    datacompy.Compare for comparison. Suitable for small to medium tables.
+
+    For very large tables, consider using sampling or the SQL-based approach.
     """
 
     def __init__(
@@ -169,10 +170,10 @@ class SnowflakeTableComparer:
         """
         self.sf_config = snowflake_config or SnowflakeConfig.from_env()
         self.cmp_config = comparison_config or ComparisonConfig()
-        self._session: Optional[Session] = None
+        self._connection = None
 
     def _get_connection_parameters(self) -> dict:
-        """Build Snowpark connection parameters from config."""
+        """Build Snowflake connection parameters from config."""
         params = {
             "account": self.sf_config.account,
             "user": self.sf_config.user,
@@ -194,21 +195,21 @@ class SnowflakeTableComparer:
 
         return params
 
-    def connect(self) -> Session:
-        """Create Snowpark session."""
-        if self._session is None:
-            logger.info(f"Creating Snowpark session for account: {self.sf_config.account}")
+    def connect(self):
+        """Create Snowflake connection."""
+        if self._connection is None:
+            logger.info(f"Connecting to Snowflake account: {self.sf_config.account}")
             connection_params = self._get_connection_parameters()
-            self._session = Session.builder.configs(connection_params).create()
-            logger.info("Snowpark session created successfully")
-        return self._session
+            self._connection = snowflake.connector.connect(**connection_params)
+            logger.info("Snowflake connection established")
+        return self._connection
 
     def close(self) -> None:
-        """Close Snowpark session."""
-        if self._session is not None:
-            self._session.close()
-            self._session = None
-            logger.info("Snowpark session closed")
+        """Close Snowflake connection."""
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+            logger.info("Snowflake connection closed")
 
     def __enter__(self):
         """Context manager entry."""
@@ -225,6 +226,40 @@ class SnowflakeTableComparer:
         hash_input = f"{timestamp}".encode()
         return hashlib.md5(hash_input).hexdigest()[:16]
 
+    def _load_table_to_pandas(
+        self,
+        table_name: str,
+        columns: Optional[List[str]] = None,
+        sample_limit: Optional[int] = None
+    ) -> pd.DataFrame:
+        """Load a Snowflake table into a pandas DataFrame."""
+        conn = self.connect()
+
+        if columns:
+            cols_str = ", ".join(f'"{c}"' for c in columns)
+        else:
+            cols_str = "*"
+
+        query = f"SELECT {cols_str} FROM {table_name}"
+
+        if sample_limit:
+            query += f" LIMIT {sample_limit}"
+
+        logger.info(f"Loading table: {table_name}")
+        df = pd.read_sql(query, conn)
+        logger.info(f"  Loaded {len(df):,} rows, {len(df.columns)} columns")
+
+        return df
+
+    def _get_row_count(self, table_name: str) -> int:
+        """Get row count for a table."""
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+        count = cursor.fetchone()[0]
+        cursor.close()
+        return count
+
     def compare(
         self,
         table1: str,
@@ -234,12 +269,14 @@ class SnowflakeTableComparer:
         rel_tol: float = 0,
         df1_name: Optional[str] = None,
         df2_name: Optional[str] = None,
+        sample_limit: Optional[int] = None,
+        ignore_spaces: bool = False,
+        ignore_case: bool = False,
     ) -> ComparisonResult:
         """
-        Compare two Snowflake tables using datacompy's SnowflakeCompare.
+        Compare two Snowflake tables using datacompy.Compare.
 
-        The comparison happens SERVER-SIDE in Snowflake using Snowpark,
-        which is efficient for large tables.
+        Data is loaded into pandas DataFrames for comparison.
 
         Args:
             table1: First table name (fully qualified: DB.SCHEMA.TABLE)
@@ -247,21 +284,17 @@ class SnowflakeTableComparer:
             join_columns: Column(s) to join on. Can be:
                 - str: Single column or comma-separated columns
                 - List[str]: List of column names
+                - None: Hash-based comparison
             abs_tol: Absolute tolerance for numeric comparisons (default from config)
             rel_tol: Relative tolerance for numeric comparisons
             df1_name: Optional display name for table1
             df2_name: Optional display name for table2
+            sample_limit: Limit rows loaded (for large tables)
+            ignore_spaces: Ignore leading/trailing spaces in strings
+            ignore_case: Ignore case in string comparisons
 
         Returns:
             ComparisonResult object with detailed comparison results
-
-        Example:
-            result = comparer.compare(
-                "TEAM_DB.EXTERNAL.TABLE1",
-                "TEAM_DB.EXTERNAL.TABLE2",
-                join_columns="ID",  # or ["ID"] or "COL1,COL2"
-                abs_tol=0.01
-            )
         """
         start_time = datetime.now()
         comparison_id = self._generate_comparison_id()
@@ -274,52 +307,63 @@ class SnowflakeTableComparer:
         if isinstance(join_columns, str):
             join_columns = [c.strip() for c in join_columns.split(",")]
 
-        # Ensure we have join columns
+        # Handle no join columns (hash comparison)
         if not join_columns or len(join_columns) == 0:
             return self._compare_hash_fallback(
-                table1, table2, comparison_id, start_time, df1_name, df2_name
+                table1, table2, comparison_id, start_time, df1_name, df2_name, sample_limit
             )
 
         try:
-            session = self.connect()
-
-            logger.info(f"Comparing tables using datacompy.SnowflakeCompare:")
+            logger.info(f"Comparing tables using datacompy.Compare:")
             logger.info(f"  Table 1: {table1}")
             logger.info(f"  Table 2: {table2}")
             logger.info(f"  Join columns: {join_columns}")
 
-            # Create SnowflakeCompare instance
-            # datacompy accepts table names directly as strings
-            comparison = SnowflakeCompare(
-                session,
-                table1,
-                table2,
+            # Load tables into pandas
+            df1 = self._load_table_to_pandas(table1, sample_limit=sample_limit)
+            df2 = self._load_table_to_pandas(table2, sample_limit=sample_limit)
+
+            table1_count = len(df1)
+            table2_count = len(df2)
+
+            # Normalize column names to uppercase for comparison
+            df1.columns = [c.upper() for c in df1.columns]
+            df2.columns = [c.upper() for c in df2.columns]
+            join_columns = [c.upper() for c in join_columns]
+
+            # Create datacompy Compare instance
+            comparison = Compare(
+                df1=df1,
+                df2=df2,
                 join_columns=join_columns,
                 abs_tol=abs_tol,
                 rel_tol=rel_tol,
                 df1_name=df1_name or table1.split(".")[-1],
                 df2_name=df2_name or table2.split(".")[-1],
+                ignore_spaces=ignore_spaces,
+                ignore_case=ignore_case,
             )
-
-            # Get row counts
-            table1_count = session.table(table1).count()
-            table2_count = session.table(table2).count()
 
             # Get statistics from datacompy
             is_identical = comparison.matches()
 
             # Get unique rows counts
-            rows_only_t1 = comparison.df1_unq_rows.count()
-            rows_only_t2 = comparison.df2_unq_rows.count()
+            rows_only_t1 = len(comparison.df1_unq_rows)
+            rows_only_t2 = len(comparison.df2_unq_rows)
 
             # Get intersect rows and count mismatches
-            intersect_rows_df = comparison.intersect_rows
-            intersect_count = intersect_rows_df.count()
+            intersect_count = comparison.intersect_rows.shape[0]
 
-            # Count rows with different values in intersect
-            # (intersect rows that are not fully matching)
-            matched_rows = comparison.count_matching_rows() if hasattr(comparison, 'count_matching_rows') else intersect_count
-            rows_with_diff = intersect_count - matched_rows if intersect_count > matched_rows else 0
+            # Count rows with different values
+            # intersect_rows contains columns like 'col_match' for each column
+            mismatch_columns = [c for c in comparison.intersect_rows.columns if c.endswith('_match')]
+            if mismatch_columns:
+                all_match = comparison.intersect_rows[mismatch_columns].all(axis=1)
+                matched_rows = all_match.sum()
+                rows_with_diff = intersect_count - matched_rows
+            else:
+                matched_rows = intersect_count
+                rows_with_diff = 0
 
             # Get column differences
             columns_only_t1 = list(comparison.df1_unq_columns())
@@ -335,7 +379,7 @@ class SnowflakeTableComparer:
             # Get the full report
             datacompy_report = comparison.report()
 
-            # Build diff details (limited sample)
+            # Build diff details
             diff_details = self._build_diff_details(
                 comparison, join_columns, self.cmp_config.max_diff_rows
             )
@@ -350,10 +394,10 @@ class SnowflakeTableComparer:
                 comparison_time=start_time,
                 table1_row_count=table1_count,
                 table2_row_count=table2_count,
-                matched_rows=matched_rows,
+                matched_rows=int(matched_rows),
                 rows_only_in_table1=rows_only_t1,
                 rows_only_in_table2=rows_only_t2,
-                rows_with_diff_values=rows_with_diff,
+                rows_with_diff_values=int(rows_with_diff),
                 match_percentage=match_pct,
                 is_identical=is_identical,
                 has_primary_key=True,
@@ -368,6 +412,8 @@ class SnowflakeTableComparer:
         except Exception as e:
             exec_time = (datetime.now() - start_time).total_seconds()
             logger.error(f"Comparison failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return ComparisonResult(
                 comparison_id=comparison_id,
                 table1_name=table1,
@@ -395,22 +441,16 @@ class SnowflakeTableComparer:
         start_time: datetime,
         df1_name: Optional[str] = None,
         df2_name: Optional[str] = None,
+        sample_limit: Optional[int] = None,
     ) -> ComparisonResult:
         """
-        Comprehensive hash-based comparison when no join columns are provided.
+        Hash-based comparison when no join columns are provided.
 
-        This method:
-        1. Creates SHA256 hash of each row (using OBJECT_CONSTRUCT)
-        2. Handles duplicate rows correctly by counting occurrences
-        3. Identifies rows only in table1, only in table2, and matching rows
-        4. Provides sample of different rows for analysis
-        5. Generates a detailed report similar to datacompy
-
-        Note: Without a primary key, we cannot identify "value differences" -
-        rows either match completely or don't match at all.
+        Uses SQL-side SHA256 hash for efficient comparison.
         """
         try:
-            session = self.connect()
+            conn = self.connect()
+            cursor = conn.cursor()
 
             logger.info("=" * 60)
             logger.info("HASH-BASED COMPARISON (No Primary Key)")
@@ -419,51 +459,22 @@ class SnowflakeTableComparer:
             logger.info(f"Table 2: {table2}")
 
             # Get row counts
-            table1_count = session.table(table1).count()
-            table2_count = session.table(table2).count()
+            table1_count = self._get_row_count(table1)
+            table2_count = self._get_row_count(table2)
             logger.info(f"Table 1 row count: {table1_count:,}")
             logger.info(f"Table 2 row count: {table2_count:,}")
 
             # Get column info
-            t1_columns = [col.name for col in session.table(table1).schema.fields]
-            t2_columns = [col.name for col in session.table(table2).schema.fields]
+            cursor.execute(f"SELECT * FROM {table1} LIMIT 0")
+            t1_columns = [desc[0] for desc in cursor.description]
+            cursor.execute(f"SELECT * FROM {table2} LIMIT 0")
+            t2_columns = [desc[0] for desc in cursor.description]
+
             common_columns = set(t1_columns) & set(t2_columns)
             columns_only_t1 = list(set(t1_columns) - set(t2_columns))
             columns_only_t2 = list(set(t2_columns) - set(t1_columns))
 
-            logger.info(f"Common columns: {len(common_columns)}")
-            if columns_only_t1:
-                logger.info(f"Columns only in Table 1: {columns_only_t1}")
-            if columns_only_t2:
-                logger.info(f"Columns only in Table 2: {columns_only_t2}")
-
-            # Create hash tables with counts for duplicate handling
-            # This handles tables with duplicate rows correctly
-            hash_count_t1_query = f"""
-                SELECT
-                    SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash,
-                    COUNT(*) AS row_count
-                FROM {table1}
-                GROUP BY row_hash
-            """
-
-            hash_count_t2_query = f"""
-                SELECT
-                    SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash,
-                    COUNT(*) AS row_count
-                FROM {table2}
-                GROUP BY row_hash
-            """
-
-            # Count unique hash values (distinct rows)
-            distinct_t1 = session.sql(f"SELECT COUNT(DISTINCT SHA2(OBJECT_CONSTRUCT(*), 256)) FROM {table1}").collect()[0][0]
-            distinct_t2 = session.sql(f"SELECT COUNT(DISTINCT SHA2(OBJECT_CONSTRUCT(*), 256)) FROM {table2}").collect()[0][0]
-
-            logger.info(f"Distinct rows in Table 1: {distinct_t1:,}")
-            logger.info(f"Distinct rows in Table 2: {distinct_t2:,}")
-
-            # Find matching rows (exist in both tables)
-            # Using a more precise count that handles duplicates
+            # Find matching rows using hash
             matched_hash_query = f"""
                 WITH t1_hashes AS (
                     SELECT SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash, COUNT(*) AS cnt
@@ -475,16 +486,14 @@ class SnowflakeTableComparer:
                     FROM {table2}
                     GROUP BY row_hash
                 )
-                SELECT SUM(LEAST(t1.cnt, t2.cnt)) AS matched_rows
+                SELECT COALESCE(SUM(LEAST(t1.cnt, t2.cnt)), 0) AS matched_rows
                 FROM t1_hashes t1
                 INNER JOIN t2_hashes t2 ON t1.row_hash = t2.row_hash
             """
-            matched_result = session.sql(matched_hash_query).collect()[0][0]
-            matched_rows = int(matched_result) if matched_result else 0
+            cursor.execute(matched_hash_query)
+            matched_rows = cursor.fetchone()[0] or 0
 
-            logger.info(f"Matched rows (identical in both): {matched_rows:,}")
-
-            # Find rows only in table1 (considering duplicates)
+            # Find rows only in table1
             only_t1_query = f"""
                 WITH t1_hashes AS (
                     SELECT SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash, COUNT(*) AS cnt
@@ -496,20 +505,20 @@ class SnowflakeTableComparer:
                     FROM {table2}
                     GROUP BY row_hash
                 )
-                SELECT SUM(
+                SELECT COALESCE(SUM(
                     CASE
                         WHEN t2.row_hash IS NULL THEN t1.cnt
                         WHEN t1.cnt > t2.cnt THEN t1.cnt - t2.cnt
                         ELSE 0
                     END
-                ) AS only_t1
+                ), 0) AS only_t1
                 FROM t1_hashes t1
                 LEFT JOIN t2_hashes t2 ON t1.row_hash = t2.row_hash
             """
-            only_t1_result = session.sql(only_t1_query).collect()[0][0]
-            rows_only_t1 = int(only_t1_result) if only_t1_result else 0
+            cursor.execute(only_t1_query)
+            rows_only_t1 = cursor.fetchone()[0] or 0
 
-            # Find rows only in table2 (considering duplicates)
+            # Find rows only in table2
             only_t2_query = f"""
                 WITH t1_hashes AS (
                     SELECT SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash, COUNT(*) AS cnt
@@ -521,27 +530,24 @@ class SnowflakeTableComparer:
                     FROM {table2}
                     GROUP BY row_hash
                 )
-                SELECT SUM(
+                SELECT COALESCE(SUM(
                     CASE
                         WHEN t1.row_hash IS NULL THEN t2.cnt
                         WHEN t2.cnt > t1.cnt THEN t2.cnt - t1.cnt
                         ELSE 0
                     END
-                ) AS only_t2
+                ), 0) AS only_t2
                 FROM t2_hashes t2
                 LEFT JOIN t1_hashes t1 ON t1.row_hash = t2.row_hash
             """
-            only_t2_result = session.sql(only_t2_query).collect()[0][0]
-            rows_only_t2 = int(only_t2_result) if only_t2_result else 0
+            cursor.execute(only_t2_query)
+            rows_only_t2 = cursor.fetchone()[0] or 0
 
+            cursor.close()
+
+            logger.info(f"Matched rows: {matched_rows:,}")
             logger.info(f"Rows only in Table 1: {rows_only_t1:,}")
             logger.info(f"Rows only in Table 2: {rows_only_t2:,}")
-
-            # Verify counts add up
-            verify_t1 = matched_rows + rows_only_t1
-            verify_t2 = matched_rows + rows_only_t2
-            logger.info(f"Verification - Table 1: {matched_rows} + {rows_only_t1} = {verify_t1} (expected {table1_count})")
-            logger.info(f"Verification - Table 2: {matched_rows} + {rows_only_t2} = {verify_t2} (expected {table2_count})")
 
             # Calculate match percentage
             total_rows = table1_count + table2_count
@@ -556,21 +562,12 @@ class SnowflakeTableComparer:
                 and rows_only_t2 == 0
             )
 
-            logger.info(f"Match percentage: {match_pct:.2f}%")
-            logger.info(f"Tables identical: {is_identical}")
-
-            # Get sample of different rows for analysis
-            diff_details = self._get_hash_diff_samples(
-                session, table1, table2, self.cmp_config.max_diff_rows
-            )
-
-            # Generate detailed report
+            # Generate report
             datacompy_report = self._generate_hash_comparison_report(
                 table1, table2,
                 df1_name or table1.split(".")[-1],
                 df2_name or table2.split(".")[-1],
                 table1_count, table2_count,
-                distinct_t1, distinct_t2,
                 matched_rows, rows_only_t1, rows_only_t2,
                 t1_columns, t2_columns,
                 common_columns, columns_only_t1, columns_only_t2,
@@ -578,7 +575,6 @@ class SnowflakeTableComparer:
             )
 
             exec_time = (datetime.now() - start_time).total_seconds()
-            logger.info(f"Execution time: {exec_time:.2f} seconds")
 
             return ComparisonResult(
                 comparison_id=comparison_id,
@@ -587,10 +583,10 @@ class SnowflakeTableComparer:
                 comparison_time=start_time,
                 table1_row_count=table1_count,
                 table2_row_count=table2_count,
-                matched_rows=matched_rows,
-                rows_only_in_table1=rows_only_t1,
-                rows_only_in_table2=rows_only_t2,
-                rows_with_diff_values=0,  # N/A for hash comparison
+                matched_rows=int(matched_rows),
+                rows_only_in_table1=int(rows_only_t1),
+                rows_only_in_table2=int(rows_only_t2),
+                rows_with_diff_values=0,
                 match_percentage=match_pct,
                 is_identical=is_identical,
                 has_primary_key=False,
@@ -598,7 +594,7 @@ class SnowflakeTableComparer:
                 columns_only_in_table1=columns_only_t1,
                 columns_only_in_table2=columns_only_t2,
                 execution_time_seconds=exec_time,
-                diff_details=diff_details,
+                diff_details=None,
                 datacompy_report=datacompy_report,
             )
 
@@ -626,78 +622,6 @@ class SnowflakeTableComparer:
                 error_message=str(e),
             )
 
-    def _get_hash_diff_samples(
-        self,
-        session: Session,
-        table1: str,
-        table2: str,
-        max_rows: int = 100
-    ) -> Optional[pd.DataFrame]:
-        """
-        Get sample of rows that are different between tables (hash comparison).
-
-        Returns a DataFrame with sample rows that exist only in one table.
-        """
-        diff_records = []
-
-        try:
-            # Sample rows only in table1
-            sample_t1_query = f"""
-                WITH t1_hashes AS (
-                    SELECT *, SHA2(OBJECT_CONSTRUCT(*), 256) AS _row_hash
-                    FROM {table1}
-                ),
-                t2_hashes AS (
-                    SELECT DISTINCT SHA2(OBJECT_CONSTRUCT(*), 256) AS _row_hash
-                    FROM {table2}
-                )
-                SELECT t1.*
-                FROM t1_hashes t1
-                LEFT JOIN t2_hashes t2 ON t1._row_hash = t2._row_hash
-                WHERE t2._row_hash IS NULL
-                LIMIT {max_rows // 2}
-            """
-            sample_t1 = session.sql(sample_t1_query).to_pandas()
-
-            for _, row in sample_t1.iterrows():
-                row_dict = row.drop("_ROW_HASH", errors="ignore").to_dict()
-                diff_records.append({
-                    "diff_type": "ONLY_TABLE1",
-                    "row_hash": row.get("_ROW_HASH", "")[:16] if "_ROW_HASH" in row else "",
-                    "row_data": str(row_dict),
-                })
-
-            # Sample rows only in table2
-            sample_t2_query = f"""
-                WITH t1_hashes AS (
-                    SELECT DISTINCT SHA2(OBJECT_CONSTRUCT(*), 256) AS _row_hash
-                    FROM {table1}
-                ),
-                t2_hashes AS (
-                    SELECT *, SHA2(OBJECT_CONSTRUCT(*), 256) AS _row_hash
-                    FROM {table2}
-                )
-                SELECT t2.*
-                FROM t2_hashes t2
-                LEFT JOIN t1_hashes t1 ON t1._row_hash = t2._row_hash
-                WHERE t1._row_hash IS NULL
-                LIMIT {max_rows // 2}
-            """
-            sample_t2 = session.sql(sample_t2_query).to_pandas()
-
-            for _, row in sample_t2.iterrows():
-                row_dict = row.drop("_ROW_HASH", errors="ignore").to_dict()
-                diff_records.append({
-                    "diff_type": "ONLY_TABLE2",
-                    "row_hash": row.get("_ROW_HASH", "")[:16] if "_ROW_HASH" in row else "",
-                    "row_data": str(row_dict),
-                })
-
-        except Exception as e:
-            logger.warning(f"Could not get diff samples: {e}")
-
-        return pd.DataFrame(diff_records) if diff_records else None
-
     def _generate_hash_comparison_report(
         self,
         table1: str,
@@ -706,8 +630,6 @@ class SnowflakeTableComparer:
         df2_name: str,
         table1_count: int,
         table2_count: int,
-        distinct_t1: int,
-        distinct_t2: int,
         matched_rows: int,
         rows_only_t1: int,
         rows_only_t2: int,
@@ -737,8 +659,6 @@ class SnowflakeTableComparer:
             f"  {'Metric':<30} {df1_name:>15} {df2_name:>15}",
             f"  {'-'*30} {'-'*15} {'-'*15}",
             f"  {'Total Rows':<30} {table1_count:>15,} {table2_count:>15,}",
-            f"  {'Distinct Rows (by hash)':<30} {distinct_t1:>15,} {distinct_t2:>15,}",
-            f"  {'Duplicate Rows':<30} {table1_count - distinct_t1:>15,} {table2_count - distinct_t2:>15,}",
             f"  {'Total Columns':<30} {len(t1_columns):>15} {len(t2_columns):>15}",
             "",
             "Column Summary",
@@ -770,11 +690,6 @@ class SnowflakeTableComparer:
             f"  Match Percentage: {match_pct:.2f}%",
             f"  Tables Identical: {is_identical}",
             "",
-            "Verification",
-            "-" * 70,
-            f"  {df1_name}: {matched_rows:,} matched + {rows_only_t1:,} only = {matched_rows + rows_only_t1:,} (actual: {table1_count:,})",
-            f"  {df2_name}: {matched_rows:,} matched + {rows_only_t2:,} only = {matched_rows + rows_only_t2:,} (actual: {table2_count:,})",
-            "",
             "=" * 70,
         ])
 
@@ -782,16 +697,16 @@ class SnowflakeTableComparer:
 
     def _build_diff_details(
         self,
-        comparison: SnowflakeCompare,
+        comparison: Compare,
         join_columns: List[str],
         max_rows: int = 100
     ) -> Optional[pd.DataFrame]:
-        """Build detailed diff DataFrame from SnowflakeCompare."""
+        """Build detailed diff DataFrame from datacompy.Compare."""
         diff_records = []
 
         try:
-            # Get sample of unique rows from table 1
-            df1_unq = comparison.df1_unq_rows.limit(max_rows).to_pandas()
+            # Get unique rows from table 1
+            df1_unq = comparison.df1_unq_rows.head(max_rows)
             for _, row in df1_unq.iterrows():
                 pk_value = "|".join(str(row.get(c, "")) for c in join_columns if c in row.index)
                 diff_records.append({
@@ -802,8 +717,8 @@ class SnowflakeTableComparer:
                     "value_table2": None,
                 })
 
-            # Get sample of unique rows from table 2
-            df2_unq = comparison.df2_unq_rows.limit(max_rows).to_pandas()
+            # Get unique rows from table 2
+            df2_unq = comparison.df2_unq_rows.head(max_rows)
             for _, row in df2_unq.iterrows():
                 pk_value = "|".join(str(row.get(c, "")) for c in join_columns if c in row.index)
                 diff_records.append({
@@ -833,14 +748,6 @@ class SnowflakeTableComparer:
 
         Returns:
             List of ComparisonResult objects
-
-        Example:
-            pairs = [
-                ("DB.SCHEMA.TABLE1", "DB.SCHEMA.TABLE1_COPY", "ID"),
-                ("DB.SCHEMA.TABLE2", "DB.SCHEMA.TABLE2_COPY", ["COL1", "COL2"]),
-                ("DB.SCHEMA.TABLE3", "DB.SCHEMA.TABLE3_COPY", None),  # Hash comparison
-            ]
-            results = comparer.compare_batch(pairs)
         """
         results = []
         total = len(table_pairs)
@@ -904,7 +811,6 @@ class SnowflakeTableComparer:
                         # Add datacompy report
                         if result.datacompy_report:
                             report_sheet = f"report_{result.comparison_id[:23]}"
-                            # Split report into lines for better Excel display
                             report_lines = result.datacompy_report.split('\n')
                             report_df = pd.DataFrame({"Report": report_lines})
                             report_df.to_excel(writer, sheet_name=report_sheet, index=False)
@@ -943,7 +849,7 @@ def quick_compare(
     """
     Quick comparison function for simple use cases.
 
-    Uses datacompy's SnowflakeCompare for server-side comparison.
+    Uses datacompy.Compare with pandas DataFrames.
 
     Args:
         table1: First table name (fully qualified: DB.SCHEMA.TABLE)
@@ -977,13 +883,14 @@ compare_tables = quick_compare
 
 if __name__ == "__main__":
     print("""
-╔═══════════════════════════════════════════════════════════════════════════╗
-║     SNOWFLAKE DATA COMPARISON TOOL                                         ║
-║     Using datacompy.SnowflakeCompare (server-side comparison)              ║
-╚═══════════════════════════════════════════════════════════════════════════╝
++===========================================================================+
+|     SNOWFLAKE DATA COMPARISON TOOL                                        |
+|     Using datacompy.Compare (pandas-based comparison)                     |
+|     Compatible with Python 3.13+                                          |
++===========================================================================+
 
-This module uses datacompy's native Snowflake integration via Snowpark.
-Comparisons happen SERVER-SIDE in Snowflake for optimal performance.
+This module uses datacompy with snowflake-connector-python.
+Data is loaded into pandas DataFrames for comparison.
 
 Usage:
     from snowflake_compare import quick_compare, SnowflakeTableComparer
