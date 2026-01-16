@@ -1,0 +1,204 @@
+# DATA DIFF PYTHON - Snowflake Table Comparison
+
+Outil Python pour comparer des tables Snowflake en utilisant **datacompy** avec l'intégration native **Snowpark**.
+
+## Avantage: Comparaison côté serveur
+
+Ce module utilise `datacompy.SnowflakeCompare` qui effectue les comparaisons **directement dans Snowflake** via Snowpark. Cela signifie:
+
+- **Pas de transfert de données** vers le client
+- **Performances optimales** pour les grandes tables
+- **Moins de mémoire** utilisée localement
+- Support de la **tolérance numérique** (`abs_tol`, `rel_tol`)
+
+## Installation
+
+```bash
+# Créer un environnement virtuel
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# ou
+.\venv\Scripts\activate  # Windows
+
+# Installer les dépendances (inclut Snowpark)
+pip install -r requirements.txt
+```
+
+## Configuration
+
+1. Créer le fichier `.env` à partir du template:
+
+```bash
+cp .env.template .env
+```
+
+2. Configurer les variables:
+
+```env
+SNOWFLAKE_ACCOUNT=your_account.eu-west-1
+SNOWFLAKE_USER=your_username
+SNOWFLAKE_PASSWORD=your_password
+SNOWFLAKE_WAREHOUSE=YOUR_WAREHOUSE
+SNOWFLAKE_DATABASE=TEAM_DB
+SNOWFLAKE_SCHEMA=EXTERNAL
+```
+
+Pour SSO (Single Sign-On):
+```env
+SNOWFLAKE_AUTHENTICATOR=externalbrowser
+```
+
+## Utilisation Python
+
+### Comparaison rapide
+
+```python
+from snowflake_compare import quick_compare
+
+# Avec clé primaire
+result = quick_compare(
+    "TEAM_DB.EXTERNAL.TABLE1",
+    "TEAM_DB.EXTERNAL.TABLE2",
+    join_columns="ID"
+)
+print(result)
+
+# Voir le rapport datacompy complet
+print(result.get_datacompy_report())
+```
+
+### Utilisation avancée
+
+```python
+from snowflake_compare import SnowflakeTableComparer
+
+with SnowflakeTableComparer() as comparer:
+    # Comparaison avec options
+    result = comparer.compare(
+        table1="TEAM_DB.EXTERNAL.SOURCE",
+        table2="TEAM_DB.EXTERNAL.TARGET",
+        join_columns=["COL1", "COL2"],  # Clé composite
+        abs_tol=0.01,                    # Tolérance numérique absolue
+        rel_tol=0.001,                   # Tolérance numérique relative
+    )
+
+    print(result)
+
+    # Exporter en Excel
+    comparer.export_results([result], "rapport", format="excel")
+```
+
+### Comparaison sans clé (hash)
+
+```python
+# Si pas de join_columns, utilise SHA256 hash de chaque ligne
+result = quick_compare(
+    "TEAM_DB.EXTERNAL.TABLE1",
+    "TEAM_DB.EXTERNAL.TABLE2"
+    # join_columns=None => comparaison par hash
+)
+```
+
+### Comparaison en batch
+
+```python
+from snowflake_compare import SnowflakeTableComparer
+
+table_pairs = [
+    ("DB.SCHEMA.TABLE1", "DB.SCHEMA.TABLE1_SAS", "ID"),
+    ("DB.SCHEMA.TABLE2", "DB.SCHEMA.TABLE2_SAS", ["COL1", "COL2"]),
+    ("DB.SCHEMA.TABLE3", "DB.SCHEMA.TABLE3_SAS", None),  # Hash
+]
+
+with SnowflakeTableComparer() as comparer:
+    results = comparer.compare_batch(table_pairs, abs_tol=0.01)
+    comparer.export_results(results, "batch_report", format="excel")
+```
+
+## Utilisation CLI
+
+```bash
+# Comparaison simple
+python run_comparison.py compare TABLE1 TABLE2 --pk ID
+
+# Clé primaire composite
+python run_comparison.py compare TABLE1 TABLE2 --pk "COL1,COL2"
+
+# Sans clé primaire (hash)
+python run_comparison.py compare TABLE1 TABLE2
+
+# Avec tolérance numérique et export
+python run_comparison.py compare TABLE1 TABLE2 --pk ID --tolerance 0.01 --export results -f excel
+
+# Batch depuis fichier YAML
+python run_comparison.py batch config.yaml --export rapport --format excel
+```
+
+## Rapport datacompy
+
+Le rapport généré par `datacompy.SnowflakeCompare.report()` inclut:
+
+- **DataFrame Summary**: Nombre de colonnes et lignes
+- **Column Summary**: Colonnes communes et uniques
+- **Row Summary**: Lignes correspondantes et différentes
+- **Column Comparison**: Détails des différences par colonne
+- **Sample Mismatch Rows**: Échantillon des lignes différentes
+
+```python
+result = quick_compare("TABLE1", "TABLE2", "ID")
+print(result.get_datacompy_report())
+```
+
+## Structure des fichiers
+
+```
+PYTHON/
+├── config.py              # Configuration Snowflake/Snowpark
+├── snowflake_compare.py   # Module principal (datacompy.SnowflakeCompare)
+├── run_comparison.py      # CLI
+├── examples.py            # Exemples d'utilisation
+├── requirements.txt       # Dépendances (datacompy[snowflake])
+├── .env.template          # Template de configuration
+└── README.md              # Cette documentation
+```
+
+## Différences avec l'outil SQL natif
+
+| Aspect | SQL (SP_COMPARE) | Python (datacompy) |
+|--------|------------------|-------------------|
+| Exécution | Dans Snowflake | Snowpark (côté serveur) |
+| Mémoire | Snowflake | Snowflake (via Snowpark) |
+| Rapport | ASCII formaté | Rapport datacompy détaillé |
+| Export | Limité | Excel/CSV/JSON |
+| Tolérance | abs_tol | abs_tol + rel_tol |
+| Analyse | Basique | Colonnes + stats détaillées |
+
+## API datacompy.SnowflakeCompare
+
+Le module utilise ces méthodes de datacompy:
+
+```python
+comparison = SnowflakeCompare(
+    session,                    # Snowpark Session
+    "TABLE1",                   # Nom table 1
+    "TABLE2",                   # Nom table 2
+    join_columns=["ID"],        # Colonnes de jointure
+    abs_tol=0.01,              # Tolérance absolue
+    rel_tol=0.001,             # Tolérance relative
+)
+
+# Méthodes disponibles
+comparison.matches()           # True si tables identiques
+comparison.report()            # Rapport textuel complet
+comparison.df1_unq_rows        # Lignes uniques table 1
+comparison.df2_unq_rows        # Lignes uniques table 2
+comparison.intersect_rows      # Lignes communes
+comparison.df1_unq_columns()   # Colonnes uniques table 1
+comparison.df2_unq_columns()   # Colonnes uniques table 2
+```
+
+## Ressources
+
+- [datacompy PyPI](https://pypi.org/project/datacompy/)
+- [datacompy Documentation](https://capitalone.github.io/datacompy/)
+- [Snowpark Python](https://docs.snowflake.com/en/developer-guide/snowpark/python/index)

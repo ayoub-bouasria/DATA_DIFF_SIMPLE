@@ -373,6 +373,7 @@ DECLARE
 
     v_sql VARCHAR;
     v_result VARCHAR;
+    v_pk_result VARIANT;
 BEGIN
     v_start_time := CURRENT_TIMESTAMP();
     v_comparison_id := UUID_STRING();
@@ -394,12 +395,19 @@ BEGIN
 
     -- Appeler la procédure appropriée selon le cas
     IF (v_has_pk) THEN
+        -- SP_COMPARE_WITH_PRIMARY_KEY retourne un VARIANT
         CALL SP_COMPARE_WITH_PRIMARY_KEY(
             :v_comparison_id, :P_TABLE1, :P_TABLE2, :P_PRIMARY_KEY,
-            :P_COLUMNS_TO_COMPARE, :P_NUMERIC_TOLERANCE, :P_CASE_SENSITIVE,
-            :v_matched_count, :v_only_table1, :v_only_table2, :v_diff_values
-        );
+            :P_COLUMNS_TO_COMPARE, :P_NUMERIC_TOLERANCE, :P_CASE_SENSITIVE
+        ) INTO :v_pk_result;
+
+        -- Extraire les valeurs du résultat VARIANT
+        v_matched_count := v_pk_result['matched_count']::NUMBER;
+        v_only_table1 := v_pk_result['only_table1']::NUMBER;
+        v_only_table2 := v_pk_result['only_table2']::NUMBER;
+        v_diff_values := v_pk_result['diff_values']::NUMBER;
     ELSE
+        -- SP_COMPARE_WITHOUT_PRIMARY_KEY utilise des paramètres OUT
         CALL SP_COMPARE_WITHOUT_PRIMARY_KEY(
             :v_comparison_id, :P_TABLE1, :P_TABLE2,
             :P_COLUMNS_TO_COMPARE, :P_CASE_SENSITIVE,
