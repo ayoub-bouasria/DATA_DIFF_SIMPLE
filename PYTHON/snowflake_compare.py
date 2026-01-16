@@ -572,7 +572,20 @@ class SnowparkComparer:
             matched_join_columns = self._match_column_case(join_columns, t1_columns)
             logger.info(f"  Join columns (matched case): {matched_join_columns}")
 
-            # Create SnowflakeCompare instance
+            # Extract short table names for df1_name/df2_name
+            # This is CRITICAL: datacompy.snowflake has a bug where it uses the table name
+            # in internal column names, and dots in table names cause issues
+            short_name1 = full_table1.split(".")[-1]  # Just the table name
+            short_name2 = full_table2.split(".")[-1]
+
+            # If comparing same table, add suffix to distinguish
+            if short_name1 == short_name2:
+                short_name1 = f"{short_name1}_1"
+                short_name2 = f"{short_name2}_2"
+
+            logger.info(f"  Using short names: {short_name1}, {short_name2}")
+
+            # Create SnowflakeCompare instance with short names
             compare = snowflake_compare_module.SnowflakeCompare(
                 session,
                 full_table1,
@@ -581,6 +594,8 @@ class SnowparkComparer:
                 abs_tol=abs_tol,
                 rel_tol=rel_tol,
                 ignore_spaces=ignore_spaces,
+                df1_name=short_name1,
+                df2_name=short_name2,
             )
 
             # Check if tables match
@@ -627,9 +642,9 @@ class SnowparkComparer:
                 "SNOWPARK REMOTE COMPARISON REPORT",
                 "=" * 70,
                 "",
-                f"Table 1: {full_table1}",
-                f"Table 2: {full_table2}",
-                f"Join Columns: {join_columns}",
+                f"Table 1: {full_table1} (as {short_name1})",
+                f"Table 2: {full_table2} (as {short_name2})",
+                f"Join Columns: {matched_join_columns}",
                 "",
                 f"Table 1 rows: {table1_count:,}",
                 f"Table 2 rows: {table2_count:,}",
@@ -658,7 +673,7 @@ class SnowparkComparer:
                 match_percentage=match_pct,
                 is_identical=final_is_identical,
                 has_primary_key=True,
-                primary_key_columns=join_columns,
+                primary_key_columns=matched_join_columns,
                 execution_time_seconds=exec_time,
                 comparison_mode="snowpark",
                 df1_unq_rows=df1_unq if not df1_unq.empty else None,
