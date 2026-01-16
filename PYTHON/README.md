@@ -13,16 +13,80 @@ Ce module utilise `datacompy.SnowflakeCompare` qui effectue les comparaisons **d
 
 ## Installation
 
-```bash
-# Créer un environnement virtuel
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# ou
-.\venv\Scripts\activate  # Windows
+### Windows (PowerShell ou CMD)
 
-# Installer les dépendances (inclut Snowpark)
+```powershell
+# 1. Naviguer vers le dossier PYTHON
+cd PYTHON
+
+# 2. Créer un environnement virtuel (si pas déjà fait)
+python -m venv venv
+
+# 3. IMPORTANT: Activer le venv AVANT d'installer les dépendances
+.\venv\Scripts\activate
+
+# 4. Vérifier que le venv est actif (vous devez voir "(venv)" au début du prompt)
+# Si ce n'est pas le cas, le venv n'est pas activé !
+
+# 5. Installer les dépendances
 pip install -r requirements.txt
+
+# 6. Vérifier l'installation
+pip list | findstr datacompy
+# Doit afficher: datacompy  x.x.x
 ```
+
+### Linux/Mac
+
+```bash
+# 1. Naviguer vers le dossier PYTHON
+cd PYTHON
+
+# 2. Créer un environnement virtuel
+python -m venv venv
+
+# 3. Activer le venv
+source venv/bin/activate
+
+# 4. Installer les dépendances
+pip install -r requirements.txt
+
+# 5. Vérifier l'installation
+pip list | grep datacompy
+```
+
+### Dépannage
+
+**Erreur `ModuleNotFoundError: No module named 'datacompy'`**
+
+Cette erreur signifie que les dépendances ne sont pas installées dans votre environnement Python actuel.
+
+1. **Vérifiez que le venv est activé** :
+   ```powershell
+   # Windows - le prompt doit commencer par (venv)
+   # Si non, activez-le:
+   .\venv\Scripts\activate
+   ```
+
+2. **Vérifiez les packages installés** :
+   ```powershell
+   pip list
+   # Doit afficher datacompy, snowflake-snowpark-python, pandas, etc.
+   ```
+
+3. **Si seul pip est installé**, réinstallez les dépendances :
+   ```powershell
+   pip install -r requirements.txt
+   ```
+
+4. **Si l'installation échoue** avec des erreurs de compilation, installez les outils de build :
+   ```powershell
+   # Windows: installer Visual Studio Build Tools
+   # ou utiliser les packages binaires:
+   pip install --only-binary :all: -r requirements.txt
+   ```
+
+**Note Python 3.12+** : Snowpark peut avoir des problèmes de compatibilité avec Python 3.12+. Utilisez Python 3.10 ou 3.11 de préférence.
 
 ## Configuration
 

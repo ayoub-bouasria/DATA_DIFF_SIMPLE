@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:pypi.org)"
+      "WebFetch(domain:pypi.org)",
+      "Bash(python -m pip:*)",
+      "Bash(python:*)",
+      "Bash(dir:*)",
+      "Bash(powershell -Command \"Get-ChildItem ''C:\\\\Users\\\\Ayoub BOUASRIA\\\\Desktop\\\\DATA_DIFF\\\\DATA_DIFF_SIMPLE\\\\PYTHON'' -Name\")",
+      "Bash(powershell -Command:*)"
     ]
   }
 }
