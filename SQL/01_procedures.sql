@@ -342,167 +342,124 @@ $$;
 -- $$;
 
 
-CREATE OR REPLACE PROCEDURE SP_COMPARE_TABLE(
-    P_RUN_ID      VARCHAR,
-    P_PROJECT_ID  VARCHAR,
-    P_TABLE_NAME  VARCHAR
-)
+
+CREATE OR REPLACE PROCEDURE SP_COMPARE_TABLE(P_RUN_ID VARCHAR, P_PROJECT_ID VARCHAR, P_TABLE_NAME VARCHAR)
 RETURNS VARCHAR
-LANGUAGE SQL
+LANGUAGE JAVASCRIPT
 EXECUTE AS CALLER
 AS
 $$
-DECLARE
-    v_config_rec   OBJECT;
-    v_snow_table   VARCHAR;
-    v_pk_cols      VARCHAR;
-    v_compare_cols VARCHAR;
-    v_has_pk       BOOLEAN;
+var v_start_time = new Date();
+var v_error_msg = '';
+var v_status = '';
+var v_match_pct = 0;
 
-    v_sas_count     NUMBER;
-    v_snow_count    NUMBER;
+try {
+    // 1) Récupérer la configuration
+    var sql_config = `
+        SELECT SNOW_TABLE, PRIMARY_KEY_COLS, COMPARE_COLS
+        FROM CONFIG_TABLES
+        WHERE PROJECT_ID = '${P_PROJECT_ID}'
+          AND TABLE_NAME = '${P_TABLE_NAME}'
+          AND IS_ACTIVE = TRUE
+    `;
+    var config_rs = snowflake.execute({sqlText: sql_config});
+    if (!config_rs.next()) {
+        v_error_msg = 'Table configuration not found: ' + P_TABLE_NAME;
+        snowflake.execute({
+            sqlText: `INSERT INTO RESULTS.COMPARISON_RESULTS (RUN_ID, PROJECT_ID, TABLE_NAME, STATUS, ERROR_MESSAGE)
+                      VALUES (?, ?, ?, 'ERROR', ?)`,
+            binds: [P_RUN_ID, P_PROJECT_ID, P_TABLE_NAME, v_error_msg]
+        });
+        return v_error_msg;
+    }
 
-    v_matched_count NUMBER;
-    v_only_sas      NUMBER;
-    v_only_snow     NUMBER;
-    v_diff_values   NUMBER;
+    var v_snow_table = config_rs.getColumnValue(1);
+    var v_pk_cols = config_rs.getColumnValue(2);
+    var v_compare_cols = config_rs.getColumnValue(3);
+    var v_has_pk = (v_pk_cols && v_pk_cols.trim().length > 0);
 
-    v_match_pct   NUMBER(5,2);
-    v_status      VARCHAR;
-    v_start_time  TIMESTAMP_NTZ;
-    v_exec_time   NUMBER;
-    v_error_msg   VARCHAR;
-BEGIN
-    v_start_time := CURRENT_TIMESTAMP();
+    // 2) Compter SAS
+    var sas_rs = snowflake.execute({
+        sqlText: `SELECT COUNT(*) FROM STAGING.SAS_STAGING_DATA WHERE PROJECT_ID=? AND TABLE_NAME=?`,
+        binds: [P_PROJECT_ID, P_TABLE_NAME]
+    });
+    sas_rs.next();
+    var v_sas_count = sas_rs.getColumnValue(1);
 
-    -- 1) Récupérer la configuration de la table
-    SELECT OBJECT_CONSTRUCT(
-        'SNOW_TABLE',        SNOW_TABLE,
-        'PRIMARY_KEY_COLS',  PRIMARY_KEY_COLS,
-        'COMPARE_COLS',      COMPARE_COLS,
-        'NUMERIC_TOLERANCE', NUMERIC_TOLERANCE
-    )
-    INTO v_config_rec
-    FROM CONFIG_TABLES
-    WHERE PROJECT_ID = :P_PROJECT_ID
-      AND TABLE_NAME = :P_TABLE_NAME
-      AND IS_ACTIVE = TRUE;
+    // 3) Compter Snowflake
+    var snow_rs = snowflake.execute({sqlText: `SELECT COUNT(*) FROM ${v_snow_table}`});
+    snow_rs.next();
+    var v_snow_count = snow_rs.getColumnValue(1);
 
-    IF (v_config_rec IS NULL) THEN
-        v_error_msg := 'Table configuration not found: ' || :P_TABLE_NAME;
-        INSERT INTO RESULTS.COMPARISON_RESULTS (
-            RUN_ID, PROJECT_ID, TABLE_NAME, STATUS, ERROR_MESSAGE
-        )
-        VALUES (
-            :P_RUN_ID, :P_PROJECT_ID, :P_TABLE_NAME, 'ERROR', :v_error_msg
-        );
-        RETURN v_error_msg;
-    END IF;
+    // 4) Appeler sous-procédures
+    if (v_has_pk) {
+        snowflake.execute({
+            sqlText: `CALL SP_COMPARE_WITH_PK(?, ?, ?, ?, ?, ?)`,
+            binds: [P_RUN_ID, P_PROJECT_ID, P_TABLE_NAME, v_snow_table, v_pk_cols, v_compare_cols]
+        });
+    } else {
+        snowflake.execute({
+            sqlText: `CALL SP_COMPARE_WITHOUT_PK(?, ?, ?, ?, ?)`,
+            binds: [P_RUN_ID, P_PROJECT_ID, P_TABLE_NAME, v_snow_table, v_compare_cols]
+        });
+    }
 
-    -- 2) Extraire les champs de l'OBJECT (avec casts)
-    v_snow_table   := v_config_rec['SNOW_TABLE']::STRING;
-    v_pk_cols      := v_config_rec['PRIMARY_KEY_COLS']::STRING;
-    v_compare_cols := v_config_rec['COMPARE_COLS']::STRING;
-    v_has_pk := (v_pk_cols IS NOT NULL AND LENGTH(TRIM(v_pk_cols)) > 0);
+    // 5) Récupérer métriques
+    var metrics_rs = snowflake.execute({
+        sqlText: `SELECT COALESCE(MAX(MATCHED_COUNT),0), COALESCE(MAX(ONLY_SAS),0),
+                         COALESCE(MAX(ONLY_SNOW),0), COALESCE(MAX(DIFF_VALUES),0)
+                  FROM TEMP_COMPARISON_METRICS
+                  WHERE RUN_ID=? AND PROJECT_ID=? AND TABLE_NAME=?`,
+        binds: [P_RUN_ID, P_PROJECT_ID, P_TABLE_NAME]
+    });
+    metrics_rs.next();
+    var v_matched_count = metrics_rs.getColumnValue(1);
+    var v_only_sas = metrics_rs.getColumnValue(2);
+    var v_only_snow = metrics_rs.getColumnValue(3);
+    var v_diff_values = metrics_rs.getColumnValue(4);
 
-    -- 3) Compter les lignes SAS
-    SELECT COUNT(*)
-    INTO v_sas_count
-    FROM STAGING.SAS_STAGING_DATA
-    WHERE PROJECT_ID = :P_PROJECT_ID
-      AND TABLE_NAME = :P_TABLE_NAME;
+    // 6) Calculer pourcentage
+    if ((v_sas_count + v_snow_count) > 0) {
+        v_match_pct = Math.round((200.0 * v_matched_count / (v_sas_count + v_snow_count)) * 100) / 100;
+    } else {
+        v_match_pct = 100.0;
+    }
 
-    -- 4) Compter les lignes côté Snowflake avec EXECUTE IMMEDIATE
-    EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || :v_snow_table INTO v_snow_count;
+    // 7) Déterminer statut
+    if (v_sas_count == v_snow_count && v_only_sas == 0 && v_only_snow == 0 && v_diff_values == 0) {
+        v_status = 'IDENTICAL';
+    } else {
+        v_status = 'DIFFERENT';
+    }
 
-    -- 5) Table temporaire pour récupérer les métriques écrites par les sous-procédures
-    CREATE TEMPORARY TABLE IF NOT EXISTS TEMP_COMPARISON_METRICS (
-        RUN_ID        VARCHAR,
-        PROJECT_ID    VARCHAR,
-        TABLE_NAME    VARCHAR,
-        MATCHED_COUNT NUMBER,
-        ONLY_SAS      NUMBER,
-        ONLY_SNOW     NUMBER,
-        DIFF_VALUES   NUMBER
-    );
+    // 8) Temps d'exécution
+    var v_exec_time = Math.floor((new Date() - v_start_time) / 1000);
 
-    -- Nettoyage des éventuels restes pour ce run/table
-    DELETE FROM TEMP_COMPARISON_METRICS
-     WHERE RUN_ID = :P_RUN_ID
-       AND PROJECT_ID = :P_PROJECT_ID
-       AND TABLE_NAME = :P_TABLE_NAME;
+    // 9) Enregistrer résultats
+    snowflake.execute({
+        sqlText: `INSERT INTO RESULTS.COMPARISON_RESULTS
+                  (RUN_ID, PROJECT_ID, TABLE_NAME, SAS_ROW_COUNT, SNOW_ROW_COUNT,
+                   MATCHED_ROWS, ONLY_IN_SAS, ONLY_IN_SNOW, DIFF_VALUES,
+                   MATCH_PERCENTAGE, STATUS, EXECUTION_TIME_SEC, HAS_PRIMARY_KEY)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        binds: [P_RUN_ID, P_PROJECT_ID, P_TABLE_NAME, v_sas_count, v_snow_count,
+                v_matched_count, v_only_sas, v_only_snow, v_diff_values,
+                v_match_pct, v_status, v_exec_time, v_has_pk]
+    });
 
-    -- 6) Lancer la comparaison via les sous-procédures
-    -- Hypothèse: elles écrivent UNE ligne dans TEMP_COMPARISON_METRICS
-    --            (RUN_ID, PROJECT_ID, TABLE_NAME, MATCHED_COUNT, ONLY_SAS, ONLY_SNOW, DIFF_VALUES)
-    IF v_has_pk THEN
-        CALL SP_COMPARE_WITH_PK(:P_RUN_ID, :P_PROJECT_ID, :P_TABLE_NAME,
-                                :v_snow_table, :v_pk_cols, :v_compare_cols);
-    ELSE
-        CALL SP_COMPARE_WITHOUT_PK(:P_RUN_ID, :P_PROJECT_ID, :P_TABLE_NAME,
-                                   :v_snow_table, :v_compare_cols);
-    END IF;
+    return 'Table ' + P_TABLE_NAME + ' comparison completed: ' + v_status;
 
-    -- 7) Récupérer les métriques ; si aucune ligne n'est écrite, on force à 0
-    SELECT
-        COALESCE(MAX(MATCHED_COUNT), 0),
-        COALESCE(MAX(ONLY_SAS), 0),
-        COALESCE(MAX(ONLY_SNOW), 0),
-        COALESCE(MAX(DIFF_VALUES), 0)
-    INTO v_matched_count, v_only_sas, v_only_snow, v_diff_values
-    FROM TEMP_COMPARISON_METRICS
-    WHERE RUN_ID = :P_RUN_ID
-      AND PROJECT_ID = :P_PROJECT_ID
-      AND TABLE_NAME = :P_TABLE_NAME;
-
-    -- 8) Calculer le pourcentage de correspondance
-    IF (v_sas_count + v_snow_count) > 0 THEN
-        -- Formule symétrique: 2 * matched / (sas + snow)
-        v_match_pct := ROUND(200.0 * v_matched_count / (v_sas_count + v_snow_count), 2);
-    ELSE
-        v_match_pct := 100.0;
-    END IF;
-
-    -- 9) Déterminer le statut
-    IF v_sas_count = v_snow_count
-       AND v_only_sas = 0
-       AND v_only_snow = 0
-       AND v_diff_values = 0 THEN
-        v_status := 'IDENTICAL';
-    ELSE
-        v_status := 'DIFFERENT';
-    END IF;
-
-    -- 10) Calculer le temps d'exécution
-    v_exec_time := DATEDIFF('second', v_start_time, CURRENT_TIMESTAMP());
-
-    -- 11) Enregistrer les résultats
-    INSERT INTO RESULTS.COMPARISON_RESULTS (
-        RUN_ID, PROJECT_ID, TABLE_NAME, SAS_ROW_COUNT, SNOW_ROW_COUNT,
-        MATCHED_ROWS, ONLY_IN_SAS, ONLY_IN_SNOW, DIFF_VALUES,
-        MATCH_PERCENTAGE, STATUS, EXECUTION_TIME_SEC, HAS_PRIMARY_KEY
-    )
-    VALUES (
-        :P_RUN_ID, :P_PROJECT_ID, :P_TABLE_NAME, :v_sas_count, :v_snow_count,
-        :v_matched_count, :v_only_sas, :v_only_snow, :v_diff_values,
-        :v_match_pct, :v_status, :v_exec_time, :v_has_pk
-    );
-
-    RETURN 'Table ' || :P_TABLE_NAME || ' comparison completed: ' || v_status;
-
-EXCEPTION
-    WHEN OTHER THEN
-        v_error_msg := 'Error comparing table ' || :P_TABLE_NAME || ': ' || SQLERRM;
-        INSERT INTO RESULTS.COMPARISON_RESULTS (
-            RUN_ID, PROJECT_ID, TABLE_NAME, STATUS, ERROR_MESSAGE
-        )
-        VALUES (
-            :P_RUN_ID, :P_PROJECT_ID, :P_TABLE_NAME, 'ERROR', :v_error_msg
-        );
-        RETURN v_error_msg;
-END;
+} catch(err) {
+    v_error_msg = 'Error comparing table ' + P_TABLE_NAME + ': ' + err.message;
+    snowflake.execute({
+        sqlText: `INSERT INTO RESULTS.COMPARISON_RESULTS (RUN_ID, PROJECT_ID, TABLE_NAME, STATUS, ERROR_MESSAGE)
+                  VALUES (?, ?, ?, 'ERROR', ?)`,
+        binds: [P_RUN_ID, P_PROJECT_ID, P_TABLE_NAME, v_error_msg]
+    });
+    return v_error_msg;
+}
 $$;
-
 
 
 -- ============================================================================
