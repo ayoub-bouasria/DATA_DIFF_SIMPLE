@@ -1,26 +1,30 @@
 # DATA DIFF PYTHON - Dependencies
 # ================================
+# Compatible with Python 3.13.7
 # Using datacompy with native Snowflake/Snowpark integration
 
 # Core comparison library with Snowflake support
-datacompy[snowflake]>=0.11.1
+# datacompy 0.14+ has better Python 3.13 compatibility
+datacompy[snowflake]>=0.14.0
 
-# Snowpark (included with datacompy[snowflake], but listed explicitly)
-snowflake-snowpark-python>=1.11.0
+# Snowpark - Python 3.13 support added in version 1.23.0+
+# Note: If installation fails, you may need to install from conda-forge:
+#   conda install -c conda-forge snowflake-snowpark-python
+snowflake-snowpark-python>=1.23.0
 
-# Data manipulation
-pandas>=2.0.0
-numpy>=1.24.0
+# Data manipulation - Python 3.13 compatible versions
+pandas>=2.2.0
+numpy>=2.1.0
 
 # Configuration management
 python-dotenv>=1.0.0
 
 # Excel export support
 openpyxl>=3.1.0
-xlsxwriter>=3.1.0
+xlsxwriter>=3.2.0
 
 # CLI
 click>=8.1.0
 
 # YAML config support
-pyyaml>=6.0.0
+pyyaml>=6.0.1

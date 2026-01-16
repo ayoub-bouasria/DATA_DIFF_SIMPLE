@@ -11,6 +11,17 @@ Ce module utilise `datacompy.SnowflakeCompare` qui effectue les comparaisons **d
 - **Moins de mémoire** utilisée localement
 - Support de la **tolérance numérique** (`abs_tol`, `rel_tol`)
 
+## Compatibilité Python
+
+Ce projet est compatible avec **Python 3.10, 3.11, 3.12, et 3.13**.
+
+| Python Version | Status | Notes |
+|----------------|--------|-------|
+| 3.10 | ✅ Supporté | Recommandé pour la stabilité |
+| 3.11 | ✅ Supporté | Recommandé pour la stabilité |
+| 3.12 | ✅ Supporté | Snowpark >= 1.20.0 requis |
+| 3.13 | ✅ Supporté | Snowpark >= 1.23.0 requis |
+
 ## Installation
 
 ### Windows (PowerShell ou CMD)
@@ -55,6 +66,24 @@ pip install -r requirements.txt
 pip list | grep datacompy
 ```
 
+### Installation avec Conda (Recommandé pour Python 3.13)
+
+Pour Python 3.13, conda-forge peut avoir des packages plus récents :
+
+```bash
+# Créer un environnement conda
+conda create -n datadiff python=3.13
+
+# Activer l'environnement
+conda activate datadiff
+
+# Installer snowflake-snowpark-python depuis conda-forge
+conda install -c conda-forge snowflake-snowpark-python
+
+# Installer le reste via pip
+pip install datacompy pandas openpyxl xlsxwriter click pyyaml python-dotenv
+```
+
 ### Installation sans venv (globale)
 
 Si vous préférez installer les packages directement dans votre Python système (sans environnement virtuel) :
@@ -67,14 +96,15 @@ cd PYTHON
 pip install -r requirements.txt
 
 # Ou installer les packages un par un :
-pip install "datacompy[snowflake]>=0.11.1"
-pip install "snowflake-snowpark-python>=1.11.0"
-pip install "pandas>=2.0.0"
+pip install "datacompy[snowflake]>=0.14.0"
+pip install "snowflake-snowpark-python>=1.23.0"
+pip install "pandas>=2.2.0"
+pip install "numpy>=2.1.0"
 pip install "python-dotenv>=1.0.0"
 pip install "openpyxl>=3.1.0"
-pip install "xlsxwriter>=3.1.0"
+pip install "xlsxwriter>=3.2.0"
 pip install "click>=8.1.0"
-pip install "pyyaml>=6.0.0"
+pip install "pyyaml>=6.0.1"
 
 # 3. Vérifier l'installation
 pip list | findstr datacompy
@@ -120,7 +150,20 @@ Cette erreur signifie que les dépendances ne sont pas installées dans votre en
    pip install --only-binary :all: -r requirements.txt
    ```
 
-**Note Python 3.12+** : Snowpark peut avoir des problèmes de compatibilité avec Python 3.12+. Utilisez Python 3.10 ou 3.11 de préférence.
+**Erreur avec snowflake-snowpark-python sur Python 3.13**
+
+Si pip ne trouve pas de version compatible de snowflake-snowpark-python :
+
+```bash
+# Option 1: Utiliser conda-forge (recommandé)
+conda install -c conda-forge snowflake-snowpark-python
+
+# Option 2: Installer depuis la source (si disponible)
+pip install --no-binary snowflake-snowpark-python snowflake-snowpark-python
+
+# Option 3: Vérifier les versions disponibles
+pip index versions snowflake-snowpark-python
+```
 
 ## Configuration
 
