@@ -706,6 +706,313 @@ class SnowparkComparer:
                 comparison_mode="snowpark",
             )
 
+    def hash_compare(
+        self,
+        table1: str,
+        table2: str,
+        database: Optional[str] = None,
+        schema1: Optional[str] = None,
+        schema2: Optional[str] = None,
+    ) -> ComparisonResult:
+        """
+        Compare two tables using row-level hash comparison (no primary key needed).
+
+        This method computes SHA256 hash of each row and compares the hash counts
+        between tables. It's useful when:
+        - No unique primary key exists
+        - You want to compare entire rows
+        - Tables may have duplicate rows
+
+        Args:
+            table1: First table name
+            table2: Second table name
+            database: Database name
+            schema1: Schema for table1
+            schema2: Schema for table2
+
+        Returns:
+            ComparisonResult with hash-based comparison results
+        """
+        start_time = datetime.now()
+        comparison_id = self._generate_comparison_id()
+
+        try:
+            session = self.connect()
+
+            # Build fully qualified table names
+            db = database or self.sf_config.database
+            sch1 = schema1 or self.sf_config.schema
+            sch2 = schema2 or sch1
+
+            if "." in table1:
+                full_table1 = table1
+            else:
+                full_table1 = f"{db}.{sch1}.{table1}"
+
+            if "." in table2:
+                full_table2 = table2
+            else:
+                full_table2 = f"{db}.{sch2}.{table2}"
+
+            logger.info("=" * 60)
+            logger.info("HASH-BASED COMPARISON (No Primary Key)")
+            logger.info("=" * 60)
+            logger.info(f"Table 1: {full_table1}")
+            logger.info(f"Table 2: {full_table2}")
+
+            # Get row counts
+            table1_count = session.sql(f"SELECT COUNT(*) FROM {full_table1}").collect()[0][0]
+            table2_count = session.sql(f"SELECT COUNT(*) FROM {full_table2}").collect()[0][0]
+            logger.info(f"Table 1 rows: {table1_count:,}")
+            logger.info(f"Table 2 rows: {table2_count:,}")
+
+            # Get column info
+            t1_columns = self.get_table_columns(full_table1)
+            t2_columns = self.get_table_columns(full_table2)
+
+            # Find common columns
+            t1_cols_upper = {c.upper(): c for c in t1_columns}
+            t2_cols_upper = {c.upper(): c for c in t2_columns}
+            common_upper = set(t1_cols_upper.keys()) & set(t2_cols_upper.keys())
+
+            columns_only_t1 = [c for c in t1_columns if c.upper() not in t2_cols_upper]
+            columns_only_t2 = [c for c in t2_columns if c.upper() not in t1_cols_upper]
+
+            logger.info(f"Common columns: {len(common_upper)}")
+            if columns_only_t1:
+                logger.info(f"Columns only in Table 1: {columns_only_t1}")
+            if columns_only_t2:
+                logger.info(f"Columns only in Table 2: {columns_only_t2}")
+
+            # Use common columns for hash comparison
+            common_cols = [t1_cols_upper[c] for c in common_upper]
+
+            if not common_cols:
+                return ComparisonResult(
+                    comparison_id=comparison_id,
+                    table1_name=full_table1,
+                    table2_name=full_table2,
+                    comparison_time=start_time,
+                    table1_row_count=table1_count,
+                    table2_row_count=table2_count,
+                    matched_rows=0,
+                    rows_only_in_table1=table1_count,
+                    rows_only_in_table2=table2_count,
+                    rows_with_diff_values=0,
+                    match_percentage=0.0,
+                    is_identical=False,
+                    has_primary_key=False,
+                    primary_key_columns=[],
+                    columns_only_in_table1=columns_only_t1,
+                    columns_only_in_table2=columns_only_t2,
+                    execution_time_seconds=(datetime.now() - start_time).total_seconds(),
+                    error_message="No common columns found between tables",
+                    comparison_mode="hash",
+                )
+
+            # Build hash expression for common columns
+            hash_cols_expr = ", ".join(f'COALESCE(CAST("{c}" AS STRING), \'__NULL__\')' for c in common_cols)
+
+            # Count matching rows using hash
+            # This query finds rows with identical hash values in both tables
+            hash_comparison_query = f"""
+            WITH t1_hashes AS (
+                SELECT SHA2(CONCAT({hash_cols_expr}), 256) AS row_hash, COUNT(*) AS cnt
+                FROM {full_table1}
+                GROUP BY row_hash
+            ),
+            t2_hashes AS (
+                SELECT SHA2(CONCAT({hash_cols_expr}), 256) AS row_hash, COUNT(*) AS cnt
+                FROM {full_table2}
+                GROUP BY row_hash
+            ),
+            matched AS (
+                SELECT COALESCE(SUM(LEAST(t1.cnt, t2.cnt)), 0) AS matched_count
+                FROM t1_hashes t1
+                INNER JOIN t2_hashes t2 ON t1.row_hash = t2.row_hash
+            ),
+            only_t1 AS (
+                SELECT COALESCE(SUM(
+                    CASE
+                        WHEN t2.row_hash IS NULL THEN t1.cnt
+                        WHEN t1.cnt > t2.cnt THEN t1.cnt - t2.cnt
+                        ELSE 0
+                    END
+                ), 0) AS only_t1_count
+                FROM t1_hashes t1
+                LEFT JOIN t2_hashes t2 ON t1.row_hash = t2.row_hash
+            ),
+            only_t2 AS (
+                SELECT COALESCE(SUM(
+                    CASE
+                        WHEN t1.row_hash IS NULL THEN t2.cnt
+                        WHEN t2.cnt > t1.cnt THEN t2.cnt - t1.cnt
+                        ELSE 0
+                    END
+                ), 0) AS only_t2_count
+                FROM t2_hashes t2
+                LEFT JOIN t1_hashes t1 ON t1.row_hash = t2.row_hash
+            )
+            SELECT
+                (SELECT matched_count FROM matched) AS matched_rows,
+                (SELECT only_t1_count FROM only_t1) AS rows_only_t1,
+                (SELECT only_t2_count FROM only_t2) AS rows_only_t2
+            """
+
+            result = session.sql(hash_comparison_query).collect()[0]
+            matched_rows = int(result[0])
+            rows_only_t1 = int(result[1])
+            rows_only_t2 = int(result[2])
+
+            logger.info(f"Matched rows: {matched_rows:,}")
+            logger.info(f"Rows only in Table 1: {rows_only_t1:,}")
+            logger.info(f"Rows only in Table 2: {rows_only_t2:,}")
+
+            # Calculate match percentage
+            total_rows = table1_count + table2_count
+            if total_rows > 0:
+                match_pct = (2 * matched_rows / total_rows) * 100
+            else:
+                match_pct = 100.0
+
+            is_identical = (
+                table1_count == table2_count
+                and rows_only_t1 == 0
+                and rows_only_t2 == 0
+                and len(columns_only_t1) == 0
+                and len(columns_only_t2) == 0
+            )
+
+            # Get sample of different rows (if any)
+            df1_unq = None
+            df2_unq = None
+
+            if rows_only_t1 > 0:
+                try:
+                    sample_query = f"""
+                    WITH t1_hashes AS (
+                        SELECT *, SHA2(CONCAT({hash_cols_expr}), 256) AS row_hash
+                        FROM {full_table1}
+                    ),
+                    t2_hashes AS (
+                        SELECT SHA2(CONCAT({hash_cols_expr}), 256) AS row_hash
+                        FROM {full_table2}
+                    )
+                    SELECT {', '.join(f'"{c}"' for c in t1_columns)}
+                    FROM t1_hashes t1
+                    WHERE NOT EXISTS (SELECT 1 FROM t2_hashes t2 WHERE t1.row_hash = t2.row_hash)
+                    LIMIT 100
+                    """
+                    df1_unq = session.sql(sample_query).to_pandas()
+                except Exception as e:
+                    logger.warning(f"Could not get sample rows from table 1: {e}")
+
+            if rows_only_t2 > 0:
+                try:
+                    sample_query = f"""
+                    WITH t2_hashes AS (
+                        SELECT *, SHA2(CONCAT({hash_cols_expr}), 256) AS row_hash
+                        FROM {full_table2}
+                    ),
+                    t1_hashes AS (
+                        SELECT SHA2(CONCAT({hash_cols_expr}), 256) AS row_hash
+                        FROM {full_table1}
+                    )
+                    SELECT {', '.join(f'"{c}"' for c in t2_columns)}
+                    FROM t2_hashes t2
+                    WHERE NOT EXISTS (SELECT 1 FROM t1_hashes t1 WHERE t1.row_hash = t2.row_hash)
+                    LIMIT 100
+                    """
+                    df2_unq = session.sql(sample_query).to_pandas()
+                except Exception as e:
+                    logger.warning(f"Could not get sample rows from table 2: {e}")
+
+            exec_time = (datetime.now() - start_time).total_seconds()
+
+            # Build report
+            report_lines = [
+                "",
+                "=" * 70,
+                "HASH-BASED COMPARISON REPORT",
+                "=" * 70,
+                "",
+                f"Table 1: {full_table1}",
+                f"Table 2: {full_table2}",
+                f"Comparison method: SHA256 row hash",
+                f"Columns compared: {len(common_cols)}",
+                "",
+                f"Table 1 rows: {table1_count:,}",
+                f"Table 2 rows: {table2_count:,}",
+                f"Matched rows: {matched_rows:,}",
+                f"Rows only in Table 1: {rows_only_t1:,}",
+                f"Rows only in Table 2: {rows_only_t2:,}",
+                "",
+                f"Match percentage: {match_pct:.2f}%",
+                f"Tables identical: {is_identical}",
+                "",
+            ]
+
+            if columns_only_t1:
+                report_lines.append(f"Columns only in Table 1: {columns_only_t1}")
+            if columns_only_t2:
+                report_lines.append(f"Columns only in Table 2: {columns_only_t2}")
+
+            report_lines.extend([
+                "",
+                "Note: Hash comparison compares entire rows without a primary key.",
+                "Rows are considered matching if all column values are identical.",
+                "=" * 70,
+            ])
+
+            return ComparisonResult(
+                comparison_id=comparison_id,
+                table1_name=full_table1,
+                table2_name=full_table2,
+                comparison_time=start_time,
+                table1_row_count=table1_count,
+                table2_row_count=table2_count,
+                matched_rows=matched_rows,
+                rows_only_in_table1=rows_only_t1,
+                rows_only_in_table2=rows_only_t2,
+                rows_with_diff_values=0,
+                match_percentage=match_pct,
+                is_identical=is_identical,
+                has_primary_key=False,
+                primary_key_columns=[],
+                columns_only_in_table1=columns_only_t1,
+                columns_only_in_table2=columns_only_t2,
+                execution_time_seconds=exec_time,
+                comparison_mode="hash",
+                df1_unq_rows=df1_unq,
+                df2_unq_rows=df2_unq,
+                datacompy_report="\n".join(report_lines),
+            )
+
+        except Exception as e:
+            exec_time = (datetime.now() - start_time).total_seconds()
+            logger.error(f"Hash comparison failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return ComparisonResult(
+                comparison_id=comparison_id,
+                table1_name=table1,
+                table2_name=table2,
+                comparison_time=start_time,
+                table1_row_count=0,
+                table2_row_count=0,
+                matched_rows=0,
+                rows_only_in_table1=0,
+                rows_only_in_table2=0,
+                rows_with_diff_values=0,
+                match_percentage=0.0,
+                is_identical=False,
+                has_primary_key=False,
+                primary_key_columns=[],
+                execution_time_seconds=exec_time,
+                error_message=str(e),
+                comparison_mode="hash",
+            )
+
     def export_results(
         self,
         results: List[ComparisonResult],
@@ -750,6 +1057,292 @@ class SnowparkComparer:
 
         logger.info(f"Results exported to: {filepath}")
         return filepath
+
+    def diagnose_table(self, table_name: str, database: Optional[str] = None, schema: Optional[str] = None) -> "DiagnosticResult":
+        """
+        Diagnose a table to find the best primary key and potential issues.
+
+        Args:
+            table_name: Table name (can be fully qualified)
+            database: Database name (optional)
+            schema: Schema name (optional)
+
+        Returns:
+            DiagnosticResult with analysis
+        """
+        session = self.connect()
+
+        # Build fully qualified table name
+        db = database or self.sf_config.database
+        sch = schema or self.sf_config.schema
+
+        if "." in table_name:
+            full_table = table_name
+        else:
+            full_table = f"{db}.{sch}.{table_name}"
+
+        logger.info(f"Diagnosing table: {full_table}")
+
+        try:
+            # Get row count
+            row_count = session.sql(f"SELECT COUNT(*) FROM {full_table}").collect()[0][0]
+            logger.info(f"  Total rows: {row_count:,}")
+
+            # Get column information
+            columns_info = []
+            describe_result = session.sql(f"DESCRIBE TABLE {full_table}").collect()
+
+            for row in describe_result:
+                col_name = row[0]
+                col_type = row[1]
+                columns_info.append({
+                    "name": col_name,
+                    "type": col_type,
+                })
+
+            logger.info(f"  Columns: {len(columns_info)}")
+
+            # Analyze each column for uniqueness and nulls
+            column_analysis = []
+            potential_keys = []
+
+            for col in columns_info:
+                col_name = col["name"]
+                col_type = col["type"]
+
+                # Count distinct values and nulls
+                analysis_query = f"""
+                    SELECT
+                        COUNT(*) as total,
+                        COUNT(DISTINCT "{col_name}") as distinct_count,
+                        SUM(CASE WHEN "{col_name}" IS NULL THEN 1 ELSE 0 END) as null_count
+                    FROM {full_table}
+                """
+                result = session.sql(analysis_query).collect()[0]
+
+                total = result[0]
+                distinct_count = result[1]
+                null_count = result[2]
+
+                uniqueness_ratio = distinct_count / total if total > 0 else 0
+                is_unique = distinct_count == total and null_count == 0
+                has_duplicates = distinct_count < total
+
+                col_analysis = {
+                    "name": col_name,
+                    "type": col_type,
+                    "total_rows": total,
+                    "distinct_count": distinct_count,
+                    "null_count": null_count,
+                    "uniqueness_ratio": uniqueness_ratio,
+                    "is_unique": is_unique,
+                    "has_duplicates": has_duplicates,
+                }
+                column_analysis.append(col_analysis)
+
+                # If column is unique, it's a potential primary key
+                if is_unique:
+                    potential_keys.append({
+                        "columns": [col_name],
+                        "is_unique": True,
+                        "null_count": 0,
+                        "recommendation": "EXCELLENT" if "ID" in col_name.upper() else "GOOD"
+                    })
+
+                logger.info(f"    {col_name}: {distinct_count:,} distinct, {null_count:,} nulls, unique={is_unique}")
+
+            # If no single unique column, try to find composite keys
+            suggested_composite = None
+            if not potential_keys and len(columns_info) >= 2:
+                # Try common patterns: all columns, or first few columns
+                all_cols = [c["name"] for c in columns_info]
+
+                # Try with all columns
+                all_cols_quoted = ", ".join(f'"{c}"' for c in all_cols)
+                concat_expr = " || '|' || ".join(f'COALESCE(CAST("{c}" AS STRING), \'NULL\')' for c in all_cols)
+
+                composite_query = f"""
+                    SELECT
+                        COUNT(*) as total,
+                        COUNT(DISTINCT {concat_expr}) as distinct_count
+                    FROM {full_table}
+                """
+                result = session.sql(composite_query).collect()[0]
+                total = result[0]
+                distinct_composite = result[1]
+
+                if distinct_composite == total:
+                    suggested_composite = {
+                        "columns": all_cols,
+                        "is_unique": True,
+                        "recommendation": "Use all columns as composite key"
+                    }
+                    potential_keys.append(suggested_composite)
+
+            # Check for duplicate rows (exact duplicates)
+            duplicate_check_query = f"""
+                SELECT COUNT(*) as dup_count
+                FROM (
+                    SELECT *, COUNT(*) OVER (PARTITION BY {", ".join(f'"{c["name"]}"' for c in columns_info)}) as cnt
+                    FROM {full_table}
+                )
+                WHERE cnt > 1
+            """
+            try:
+                dup_result = session.sql(duplicate_check_query).collect()[0]
+                exact_duplicate_rows = dup_result[0]
+            except:
+                exact_duplicate_rows = -1  # Could not determine
+
+            return DiagnosticResult(
+                table_name=full_table,
+                row_count=row_count,
+                column_count=len(columns_info),
+                columns=column_analysis,
+                potential_primary_keys=potential_keys,
+                exact_duplicate_rows=exact_duplicate_rows,
+                suggested_join_columns=potential_keys[0]["columns"] if potential_keys else None,
+                issues=self._identify_issues(column_analysis, potential_keys, exact_duplicate_rows),
+            )
+
+        except Exception as e:
+            logger.error(f"Diagnosis failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return DiagnosticResult(
+                table_name=full_table,
+                row_count=0,
+                column_count=0,
+                columns=[],
+                potential_primary_keys=[],
+                exact_duplicate_rows=0,
+                suggested_join_columns=None,
+                issues=[f"Diagnosis failed: {str(e)}"],
+            )
+
+    def _identify_issues(self, column_analysis: List[Dict], potential_keys: List[Dict], exact_duplicates: int) -> List[str]:
+        """Identify potential issues with the table."""
+        issues = []
+
+        # No unique column
+        if not potential_keys:
+            issues.append("WARNING: No unique column found. Comparison may produce incorrect results.")
+            issues.append("SUGGESTION: Use hash-based comparison or specify a composite key.")
+
+        # Columns with many nulls
+        for col in column_analysis:
+            if col["null_count"] > 0 and col["null_count"] / col["total_rows"] > 0.1:
+                issues.append(f"WARNING: Column '{col['name']}' has {col['null_count']:,} NULL values ({col['null_count']/col['total_rows']*100:.1f}%)")
+
+        # Exact duplicates
+        if exact_duplicates > 0:
+            issues.append(f"WARNING: Table has {exact_duplicates:,} exact duplicate rows.")
+
+        # Low cardinality columns used as potential keys
+        for col in column_analysis:
+            if col["uniqueness_ratio"] < 0.01 and col["distinct_count"] > 1:
+                issues.append(f"INFO: Column '{col['name']}' has low cardinality ({col['distinct_count']:,} distinct values)")
+
+        return issues
+
+
+@dataclass
+class DiagnosticResult:
+    """Result of table diagnosis."""
+
+    table_name: str
+    row_count: int
+    column_count: int
+    columns: List[Dict[str, Any]]
+    potential_primary_keys: List[Dict[str, Any]]
+    exact_duplicate_rows: int
+    suggested_join_columns: Optional[List[str]]
+    issues: List[str]
+
+    def __str__(self) -> str:
+        """Return formatted diagnostic report."""
+        lines = [
+            "",
+            "=" * 80,
+            "TABLE DIAGNOSTIC REPORT",
+            "=" * 80,
+            f"Table: {self.table_name}",
+            f"Rows: {self.row_count:,}",
+            f"Columns: {self.column_count}",
+            "",
+            "-" * 80,
+            "COLUMN ANALYSIS",
+            "-" * 80,
+            f"{'Column':<30} {'Type':<15} {'Distinct':>12} {'Nulls':>10} {'Unique':>8}",
+            "-" * 80,
+        ]
+
+        for col in self.columns:
+            unique_str = "YES" if col.get("is_unique") else "NO"
+            lines.append(
+                f"{col['name']:<30} {col['type']:<15} {col['distinct_count']:>12,} {col['null_count']:>10,} {unique_str:>8}"
+            )
+
+        lines.extend([
+            "",
+            "-" * 80,
+            "POTENTIAL PRIMARY KEYS",
+            "-" * 80,
+        ])
+
+        if self.potential_primary_keys:
+            for pk in self.potential_primary_keys:
+                cols = ", ".join(pk["columns"])
+                rec = pk.get("recommendation", "")
+                lines.append(f"  - {cols} [{rec}]")
+        else:
+            lines.append("  No unique column found!")
+            lines.append("  Consider using hash-based comparison or a composite key.")
+
+        if self.suggested_join_columns:
+            lines.extend([
+                "",
+                "-" * 80,
+                "SUGGESTED JOIN COLUMNS",
+                "-" * 80,
+                f"  --pk {','.join(self.suggested_join_columns)}",
+            ])
+
+        if self.issues:
+            lines.extend([
+                "",
+                "-" * 80,
+                "ISSUES & WARNINGS",
+                "-" * 80,
+            ])
+            for issue in self.issues:
+                lines.append(f"  {issue}")
+
+        if self.exact_duplicate_rows > 0:
+            lines.extend([
+                "",
+                "-" * 80,
+                "DUPLICATE ROWS",
+                "-" * 80,
+                f"  Exact duplicate rows: {self.exact_duplicate_rows:,}",
+            ])
+
+        lines.extend(["", "=" * 80])
+
+        return "\n".join(lines)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "table_name": self.table_name,
+            "row_count": self.row_count,
+            "column_count": self.column_count,
+            "columns": self.columns,
+            "potential_primary_keys": self.potential_primary_keys,
+            "exact_duplicate_rows": self.exact_duplicate_rows,
+            "suggested_join_columns": self.suggested_join_columns,
+            "issues": self.issues,
+        }
 
 
 # ============================================================================

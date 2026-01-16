@@ -49,10 +49,15 @@ def get_comparer(table1: str, table2: str, mode: str = "auto"):
             click.echo("Error: Snowpark not available. Install snowflake-snowpark-python (Python 3.9-3.13).", err=True)
             sys.exit(2)
         return SnowparkComparer(), "snowpark"
+    elif mode == "hash":
+        if not SNOWPARK_AVAILABLE:
+            click.echo("Error: Snowpark not available for hash mode. Install snowflake-snowpark-python (Python 3.9-3.13).", err=True)
+            sys.exit(2)
+        return SnowparkComparer(), "hash"
     elif mode == "local":
         return LocalFileComparer(), "local"
     else:
-        click.echo(f"Error: Unknown mode '{mode}'. Use 'auto', 'snowpark', or 'local'.", err=True)
+        click.echo(f"Error: Unknown mode '{mode}'. Use 'auto', 'snowpark', 'local', or 'hash'.", err=True)
         sys.exit(2)
 
 
@@ -98,9 +103,9 @@ def status():
 @click.option(
     "--mode",
     "-m",
-    type=click.Choice(["auto", "snowpark", "local"]),
+    type=click.Choice(["auto", "snowpark", "local", "hash"]),
     default="auto",
-    help="Comparison mode: auto (default), snowpark (remote), or local (files)",
+    help="Comparison mode: auto (default), snowpark (remote), local (files), or hash (row-level hash comparison)",
 )
 @click.option(
     "--database",
@@ -193,26 +198,36 @@ def compare(
         click.echo()
 
         with comparer:
-            # Build comparison arguments based on mode
-            kwargs = {
-                "table1": table1,
-                "table2": table2,
-                "join_columns": pk_cols,
-                "abs_tol": tolerance,
-                "ignore_spaces": ignore_spaces,
-                "ignore_case": ignore_case,
-            }
+            # Use hash comparison if mode is hash or no primary key with Snowpark
+            if actual_mode == "hash":
+                result = comparer.hash_compare(
+                    table1=table1,
+                    table2=table2,
+                    database=database,
+                    schema1=schema1,
+                    schema2=schema2,
+                )
+            else:
+                # Build comparison arguments based on mode
+                kwargs = {
+                    "table1": table1,
+                    "table2": table2,
+                    "join_columns": pk_cols,
+                    "abs_tol": tolerance,
+                    "ignore_spaces": ignore_spaces,
+                    "ignore_case": ignore_case,
+                }
 
-            # Add Snowpark-specific arguments
-            if actual_mode == "snowpark":
-                if database:
-                    kwargs["database"] = database
-                if schema1:
-                    kwargs["schema1"] = schema1
-                if schema2:
-                    kwargs["schema2"] = schema2
+                # Add Snowpark-specific arguments
+                if actual_mode == "snowpark":
+                    if database:
+                        kwargs["database"] = database
+                    if schema1:
+                        kwargs["schema1"] = schema1
+                    if schema2:
+                        kwargs["schema2"] = schema2
 
-            result = comparer.compare(**kwargs)
+                result = comparer.compare(**kwargs)
 
             # Print result
             click.echo(str(result))
@@ -378,6 +393,92 @@ def batch(config_file: str, export: Optional[str], format: str, mode: str):
         sys.exit(1)
     else:
         sys.exit(0)
+
+
+@cli.command()
+@click.argument("table_name")
+@click.option(
+    "--database",
+    "-d",
+    help="Snowflake database",
+)
+@click.option(
+    "--schema",
+    "-s",
+    help="Snowflake schema",
+)
+@click.option(
+    "--export",
+    "-e",
+    type=click.Path(),
+    help="Export diagnostic to JSON file",
+)
+def diagnose(table_name: str, database: Optional[str], schema: Optional[str], export: Optional[str]):
+    """Diagnose a Snowflake table to find the best primary key.
+
+    This command analyzes a table and reports:
+    - Column uniqueness (which columns could be primary keys)
+    - NULL values in each column
+    - Duplicate rows
+    - Suggested join columns for comparison
+
+    Examples:
+
+        python run_comparison.py diagnose E002_OK
+
+        python run_comparison.py diagnose E002_OK -d TEAM_DB -s EXTERNAL
+
+        python run_comparison.py diagnose E002_OK --export diagnosis.json
+    """
+    if not SNOWPARK_AVAILABLE:
+        click.echo("Error: Snowpark not available. Install snowflake-snowpark-python (Python 3.9-3.13).", err=True)
+        sys.exit(2)
+
+    click.echo("=" * 60)
+    click.echo("TABLE DIAGNOSTIC")
+    click.echo("=" * 60)
+    click.echo(f"Analyzing: {table_name}")
+    click.echo()
+
+    try:
+        from snowflake_compare import SnowparkComparer
+
+        with SnowparkComparer() as comparer:
+            result = comparer.diagnose_table(
+                table_name=table_name,
+                database=database,
+                schema=schema,
+            )
+
+            # Print the diagnostic report
+            click.echo(str(result))
+
+            # Export if requested
+            if export:
+                import json
+                with open(export, "w", encoding="utf-8") as f:
+                    json.dump(result.to_dict(), f, indent=2, default=str)
+                click.echo(f"\nDiagnostic exported to: {export}")
+
+            # Provide CLI suggestion
+            if result.suggested_join_columns:
+                click.echo("\nSuggested comparison command:")
+                pk_str = ",".join(result.suggested_join_columns)
+                click.echo(f"  python run_comparison.py compare {table_name} <OTHER_TABLE> --pk {pk_str}")
+            else:
+                click.echo("\nNo unique key found. Try hash-based comparison:")
+                click.echo(f"  python run_comparison.py compare {table_name} <OTHER_TABLE> --mode hash")
+
+            # Exit code based on issues
+            if any("WARNING" in issue for issue in result.issues):
+                sys.exit(1)
+            sys.exit(0)
+
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        import traceback
+        click.echo(traceback.format_exc(), err=True)
+        sys.exit(2)
 
 
 @cli.command()
