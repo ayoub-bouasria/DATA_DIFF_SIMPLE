@@ -1,18 +1,16 @@
 # DATA DIFF PYTHON - Dependencies
 # ================================
-# Compatible with Python 3.13.7
-# Using datacompy with Snowflake connector (pandas-based comparison)
+# Compatible with Python 3.9-3.13
+# Using datacompy with Snowpark for remote comparison
 
-# Core comparison library (without snowflake extra - uses pandas)
+# Core comparison library
 datacompy>=0.14.0
 
-# Snowflake connector - INSTALL WITH PRE-BUILT WHEELS:
-#   pip install --only-binary :all: snowflake-connector-python
-# If that fails, use conda:
-#   conda install -c conda-forge snowflake-connector-python
-snowflake-connector-python[pandas]
+# Snowpark for remote Snowflake comparison (Python 3.9-3.13)
+# This is the recommended way to compare large tables
+snowflake-snowpark-python>=1.35.0
 
-# Data manipulation - Python 3.13 compatible versions
+# Data manipulation
 pandas>=2.2.0
 numpy>=2.1.0
 
@@ -30,12 +28,34 @@ click>=8.1.0
 pyyaml>=6.0.1
 
 # ============================================================
-# INSTALLATION NOTES FOR PYTHON 3.13
+# INSTALLATION NOTES
 # ============================================================
-# If pip tries to compile snowflake-connector-python, use:
 #
-#   pip install --only-binary :all: -r requirements.txt
+# For Python 3.9-3.13 (recommended):
+#   pip install -r requirements.txt
 #
-# Or install via conda-forge:
-#   conda install -c conda-forge snowflake-connector-python
-#   pip install datacompy pandas openpyxl xlsxwriter click pyyaml python-dotenv
+# For Python 3.14+ (Snowpark not available):
+#   # Only local file comparison will work
+#   pip install datacompy pandas click pyyaml python-dotenv openpyxl xlsxwriter
+#
+# Using conda (alternative):
+#   conda create -n datadiff python=3.11
+#   conda activate datadiff
+#   conda install -c conda-forge snowflake-snowpark-python
+#   pip install datacompy pandas click pyyaml python-dotenv openpyxl xlsxwriter
+#
+# ============================================================
+# USAGE MODES
+# ============================================================
+#
+# 1. Snowpark mode (remote comparison on Snowflake):
+#    - Requires Python 3.9-3.13
+#    - Requires snowflake-snowpark-python
+#    - Best for large tables (no data download)
+#    - Usage: python run_comparison.py compare TABLE1 TABLE2 --pk ID --mode snowpark
+#
+# 2. Local mode (compare CSV/Excel files):
+#    - Works on any Python version
+#    - No Snowflake connection required
+#    - Usage: python run_comparison.py compare file1.csv file2.csv --pk ID
+#

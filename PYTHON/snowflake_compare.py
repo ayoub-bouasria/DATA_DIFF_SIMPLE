@@ -1,24 +1,23 @@
 """
 Snowflake Data Comparison Module using datacompy.
 
-This module provides functionality to compare Snowflake tables using the
-datacompy library with snowflake-connector-python.
+This module provides functionality to compare Snowflake tables using:
+1. SnowparkComparer - Remote comparison using datacompy.snowflake (recommended for large tables)
+2. SnowflakeTableComparer - Local comparison using pandas (downloads data first)
+3. LocalFileComparer - Compare local CSV/Excel files
 
-Compatible with Python 3.13+ (uses pandas-based comparison instead of Snowpark).
+Compatible with Python 3.9-3.13 for Snowpark, any version for local files.
 
 Usage:
-    from snowflake_compare import SnowflakeTableComparer, quick_compare
+    from snowflake_compare import SnowparkComparer, quick_compare
 
-    # Quick comparison
-    result = quick_compare("TABLE1", "TABLE2", join_columns=["ID"])
-
-    # Advanced usage
-    with SnowflakeTableComparer() as comparer:
+    # Remote comparison (Snowpark - recommended)
+    with SnowparkComparer() as comparer:
         result = comparer.compare("TABLE1", "TABLE2", join_columns=["ID"])
         print(result)
 
 Requirements:
-    pip install datacompy snowflake-connector-python pandas
+    pip install snowflake-snowpark-python datacompy pandas
 """
 
 import pandas as pd
@@ -29,14 +28,12 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
-
-# Snowflake connector imports
-import snowflake.connector
-from snowflake.connector import DictCursor
+import sys
+import os
 
 # datacompy imports (pandas-based Compare)
 import datacompy
-from datacompy import Compare
+from datacompy.core import Compare
 
 from config import SnowflakeConfig, ComparisonConfig
 
@@ -44,6 +41,109 @@ from config import SnowflakeConfig, ComparisonConfig
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# Check available backends
+# ============================================================================
+
+SNOWPARK_AVAILABLE = False
+SNOWPARK_ERROR_MESSAGE = None
+SNOWFLAKE_CONNECTOR_AVAILABLE = False
+SNOWFLAKE_CONNECTOR_ERROR_MESSAGE = None
+
+# Try to import Snowpark (for remote comparison)
+try:
+    from snowflake.snowpark import Session
+    import datacompy.snowflake as snowflake_compare_module
+    SNOWPARK_AVAILABLE = True
+    logger.info("Snowpark backend available")
+except ImportError as e:
+    SNOWPARK_ERROR_MESSAGE = str(e)
+except Exception as e:
+    SNOWPARK_ERROR_MESSAGE = str(e)
+
+# Try to import snowflake-connector-python (for local pandas comparison)
+try:
+    import snowflake.connector
+    from snowflake.connector import DictCursor
+    SNOWFLAKE_CONNECTOR_AVAILABLE = True
+    logger.info("Snowflake connector backend available")
+except ImportError as e:
+    SNOWFLAKE_CONNECTOR_ERROR_MESSAGE = str(e)
+except Exception as e:
+    SNOWFLAKE_CONNECTOR_ERROR_MESSAGE = str(e)
+
+
+def get_availability_status() -> str:
+    """Return a string describing available backends."""
+    status_lines = [
+        "=" * 60,
+        "SNOWFLAKE COMPARISON BACKENDS STATUS",
+        "=" * 60,
+        f"Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "",
+    ]
+
+    if SNOWPARK_AVAILABLE:
+        status_lines.append("[OK] Snowpark (datacompy.snowflake) - AVAILABLE")
+        status_lines.append("     -> Use SnowparkComparer for remote comparison")
+    else:
+        status_lines.append(f"[X] Snowpark - NOT AVAILABLE: {SNOWPARK_ERROR_MESSAGE}")
+        status_lines.append("     -> Install: pip install snowflake-snowpark-python")
+        status_lines.append("     -> Requires Python 3.9-3.13")
+
+    status_lines.append("")
+
+    if SNOWFLAKE_CONNECTOR_AVAILABLE:
+        status_lines.append("[OK] Snowflake Connector - AVAILABLE")
+        status_lines.append("     -> Use SnowflakeTableComparer for pandas-based comparison")
+    else:
+        status_lines.append(f"[X] Snowflake Connector - NOT AVAILABLE: {SNOWFLAKE_CONNECTOR_ERROR_MESSAGE}")
+        status_lines.append("     -> Install: pip install snowflake-connector-python")
+
+    status_lines.append("")
+    status_lines.append("[OK] Local file comparison - ALWAYS AVAILABLE")
+    status_lines.append("     -> Use LocalFileComparer for CSV/Excel files")
+    status_lines.append("=" * 60)
+
+    return "\n".join(status_lines)
+
+
+def check_snowpark():
+    """Check if Snowpark is available and provide helpful error message."""
+    if not SNOWPARK_AVAILABLE:
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        error_msg = f"""
+================================================================================
+SNOWPARK NOT AVAILABLE
+================================================================================
+
+Error: {SNOWPARK_ERROR_MESSAGE}
+
+Python version: {python_version}
+
+Snowpark requires Python 3.9-3.13 and snowflake-snowpark-python package.
+
+SOLUTIONS:
+----------
+
+1. Install Snowpark (Python 3.9-3.13 required):
+   pip install snowflake-snowpark-python
+
+2. If using Python 3.14+, downgrade to Python 3.11-3.13:
+   python3.11 -m venv venv
+   venv\\Scripts\\activate  # Windows
+   pip install -r requirements.txt
+
+3. Use LocalFileComparer for local file comparison (always available)
+
+================================================================================
+"""
+        raise RuntimeError(error_msg)
+
+
+# ============================================================================
+# Data Classes
+# ============================================================================
 
 @dataclass
 class ComparisonResult:
@@ -80,9 +180,12 @@ class ComparisonResult:
     # Execution metadata
     execution_time_seconds: float = 0.0
     error_message: Optional[str] = None
+    comparison_mode: str = "unknown"  # 'snowpark', 'pandas', 'local'
 
     # Detailed diff data (optional, for export)
     diff_details: Optional[pd.DataFrame] = None
+    df1_unq_rows: Optional[pd.DataFrame] = None
+    df2_unq_rows: Optional[pd.DataFrame] = None
 
     # Full datacompy report
     datacompy_report: Optional[str] = None
@@ -109,6 +212,7 @@ class ComparisonResult:
             "columns_with_differences": self.columns_with_differences,
             "execution_time_seconds": self.execution_time_seconds,
             "error_message": self.error_message,
+            "comparison_mode": self.comparison_mode,
         }
 
     def __str__(self) -> str:
@@ -118,7 +222,7 @@ class ComparisonResult:
 
         lines = [
             "+" + "=" * 77 + "+",
-            "|" + "COMPARISON REPORT (datacompy)".center(77) + "|",
+            "|" + f"COMPARISON REPORT ({self.comparison_mode})".center(77) + "|",
             "+" + "=" * 77 + "+",
             f"| ID: {self.comparison_id:<72} |",
             f"| Time: {self.comparison_time.strftime('%Y-%m-%d %H:%M:%S'):<70} |",
@@ -146,34 +250,50 @@ class ComparisonResult:
         return self.datacompy_report or "No datacompy report available."
 
 
-class SnowflakeTableComparer:
+# ============================================================================
+# SnowparkComparer - Remote comparison using datacompy.snowflake
+# ============================================================================
+
+class SnowparkComparer:
     """
-    Compare Snowflake tables using datacompy with snowflake-connector-python.
+    Compare Snowflake tables using datacompy.snowflake.SnowflakeCompare.
 
-    This class loads data from Snowflake into pandas DataFrames and uses
-    datacompy.Compare for comparison. Suitable for small to medium tables.
+    This class performs comparison directly on Snowflake servers using Snowpark,
+    which is much more efficient for large tables as data doesn't need to be
+    downloaded locally.
 
-    For very large tables, consider using sampling or the SQL-based approach.
+    Requires Python 3.9-3.13 and snowflake-snowpark-python package.
     """
 
     def __init__(
         self,
         snowflake_config: Optional[SnowflakeConfig] = None,
         comparison_config: Optional[ComparisonConfig] = None,
+        credentials_file: Optional[str] = None,
     ):
         """
-        Initialize the comparer.
+        Initialize the Snowpark comparer.
 
         Args:
             snowflake_config: Snowflake connection configuration (from .env if None)
             comparison_config: Comparison settings
+            credentials_file: Path to JSON credentials file (alternative to config)
         """
+        check_snowpark()
+
         self.sf_config = snowflake_config or SnowflakeConfig.from_env()
         self.cmp_config = comparison_config or ComparisonConfig()
-        self._connection = None
+        self.credentials_file = credentials_file
+        self._session = None
 
-    def _get_connection_parameters(self) -> dict:
-        """Build Snowflake connection parameters from config."""
+    def _get_session_parameters(self) -> dict:
+        """Build Snowpark session parameters from config."""
+        # If credentials file is provided, load from it
+        if self.credentials_file and os.path.exists(self.credentials_file):
+            with open(self.credentials_file, 'r') as f:
+                return json.load(f)
+
+        # Otherwise, build from config
         params = {
             "account": self.sf_config.account,
             "user": self.sf_config.user,
@@ -195,21 +315,24 @@ class SnowflakeTableComparer:
 
         return params
 
-    def connect(self):
-        """Create Snowflake connection."""
-        if self._connection is None:
-            logger.info(f"Connecting to Snowflake account: {self.sf_config.account}")
-            connection_params = self._get_connection_parameters()
-            self._connection = snowflake.connector.connect(**connection_params)
-            logger.info("Snowflake connection established")
-        return self._connection
+    def connect(self) -> "Session":
+        """Create Snowpark session."""
+        if self._session is None:
+            logger.info(f"Creating Snowpark session for account: {self.sf_config.account}")
+            connection_params = self._get_session_parameters()
+            self._session = Session.builder.configs(connection_params).create()
+            logger.info("Snowpark session established")
+        return self._session
 
     def close(self) -> None:
-        """Close Snowflake connection."""
-        if self._connection is not None:
-            self._connection.close()
-            self._connection = None
-            logger.info("Snowflake connection closed")
+        """Close Snowpark session."""
+        if self._session is not None:
+            try:
+                self._session.close()
+            except Exception as e:
+                logger.warning(f"Error closing session: {e}")
+            self._session = None
+            logger.info("Snowpark session closed")
 
     def __enter__(self):
         """Context manager entry."""
@@ -226,39 +349,305 @@ class SnowflakeTableComparer:
         hash_input = f"{timestamp}".encode()
         return hashlib.md5(hash_input).hexdigest()[:16]
 
-    def _load_table_to_pandas(
+    def use_database_schema(self, database: str, schema: str) -> None:
+        """Set the active database and schema."""
+        session = self.connect()
+        session.sql(f"USE DATABASE {database}").collect()
+        session.sql(f"USE SCHEMA {schema}").collect()
+        logger.info(f"Using {database}.{schema}")
+
+    def compare(
         self,
-        table_name: str,
-        columns: Optional[List[str]] = None,
-        sample_limit: Optional[int] = None
-    ) -> pd.DataFrame:
-        """Load a Snowflake table into a pandas DataFrame."""
-        conn = self.connect()
+        table1: str,
+        table2: str,
+        join_columns: Optional[Union[str, List[str], set]] = None,
+        abs_tol: float = 1e-4,
+        rel_tol: float = 1e-3,
+        ignore_spaces: bool = True,
+        ignore_case: bool = False,
+        database: Optional[str] = None,
+        schema1: Optional[str] = None,
+        schema2: Optional[str] = None,
+        **kwargs,
+    ) -> ComparisonResult:
+        """
+        Compare two Snowflake tables using datacompy.snowflake.SnowflakeCompare.
 
-        if columns:
-            cols_str = ", ".join(f'"{c}"' for c in columns)
+        Comparison runs directly on Snowflake - no data download required.
+
+        Args:
+            table1: First table name (can be fully qualified: DB.SCHEMA.TABLE)
+            table2: Second table name
+            join_columns: Column(s) to join on (required for SnowflakeCompare)
+            abs_tol: Absolute tolerance for numeric comparisons
+            rel_tol: Relative tolerance for numeric comparisons
+            ignore_spaces: Ignore leading/trailing spaces in strings
+            ignore_case: Ignore case in string comparisons
+            database: Database name (uses config default if not specified)
+            schema1: Schema for table1 (uses config default if not specified)
+            schema2: Schema for table2 (uses schema1 if not specified)
+
+        Returns:
+            ComparisonResult object with detailed comparison results
+        """
+        start_time = datetime.now()
+        comparison_id = self._generate_comparison_id()
+
+        # Parse join_columns
+        if isinstance(join_columns, str):
+            join_columns = [c.strip().upper() for c in join_columns.split(",")]
+        elif isinstance(join_columns, set):
+            join_columns = list(join_columns)
+        elif join_columns:
+            join_columns = [c.upper() for c in join_columns]
+
+        if not join_columns:
+            return ComparisonResult(
+                comparison_id=comparison_id,
+                table1_name=table1,
+                table2_name=table2,
+                comparison_time=start_time,
+                table1_row_count=0,
+                table2_row_count=0,
+                matched_rows=0,
+                rows_only_in_table1=0,
+                rows_only_in_table2=0,
+                rows_with_diff_values=0,
+                match_percentage=0.0,
+                is_identical=False,
+                has_primary_key=False,
+                primary_key_columns=[],
+                execution_time_seconds=0.0,
+                error_message="join_columns is required for Snowpark comparison. Use LocalFileComparer for hash-based comparison.",
+                comparison_mode="snowpark",
+            )
+
+        try:
+            session = self.connect()
+
+            # Build fully qualified table names
+            db = database or self.sf_config.database
+            sch1 = schema1 or self.sf_config.schema
+            sch2 = schema2 or sch1
+
+            # If table names already contain dots, use them as-is
+            if "." in table1:
+                full_table1 = table1
+            else:
+                full_table1 = f"{db}.{sch1}.{table1}"
+
+            if "." in table2:
+                full_table2 = table2
+            else:
+                full_table2 = f"{db}.{sch2}.{table2}"
+
+            logger.info(f"Comparing tables using Snowpark (remote):")
+            logger.info(f"  Table 1: {full_table1}")
+            logger.info(f"  Table 2: {full_table2}")
+            logger.info(f"  Join columns: {join_columns}")
+
+            # Create SnowflakeCompare instance
+            compare = snowflake_compare_module.SnowflakeCompare(
+                session,
+                full_table1,
+                full_table2,
+                join_columns=join_columns,
+                abs_tol=abs_tol,
+                rel_tol=rel_tol,
+                ignore_spaces=ignore_spaces,
+            )
+
+            # Check if tables match
+            is_identical = compare.matches()
+            all_columns_match = compare.all_columns_match()
+
+            # Get unique rows as pandas DataFrames
+            df1_unq = compare.df1_unq_rows.to_pandas() if hasattr(compare.df1_unq_rows, 'to_pandas') else pd.DataFrame()
+            df2_unq = compare.df2_unq_rows.to_pandas() if hasattr(compare.df2_unq_rows, 'to_pandas') else pd.DataFrame()
+
+            rows_only_t1 = len(df1_unq)
+            rows_only_t2 = len(df2_unq)
+
+            # Get row counts from the tables
+            try:
+                table1_count = session.sql(f"SELECT COUNT(*) FROM {full_table1}").collect()[0][0]
+                table2_count = session.sql(f"SELECT COUNT(*) FROM {full_table2}").collect()[0][0]
+            except Exception as e:
+                logger.warning(f"Could not get row counts: {e}")
+                table1_count = 0
+                table2_count = 0
+
+            # Calculate matched rows
+            matched_rows = min(table1_count, table2_count) - max(rows_only_t1, rows_only_t2)
+            if matched_rows < 0:
+                matched_rows = 0
+
+            # Calculate match percentage
+            total_rows = table1_count + table2_count
+            if total_rows > 0:
+                match_pct = (2 * matched_rows / total_rows) * 100
+            else:
+                match_pct = 100.0 if is_identical else 0.0
+
+            # Determine final status
+            final_is_identical = is_identical and df1_unq.empty and df2_unq.empty
+
+            exec_time = (datetime.now() - start_time).total_seconds()
+
+            # Build report
+            report_lines = [
+                "",
+                "=" * 70,
+                "SNOWPARK REMOTE COMPARISON REPORT",
+                "=" * 70,
+                "",
+                f"Table 1: {full_table1}",
+                f"Table 2: {full_table2}",
+                f"Join Columns: {join_columns}",
+                "",
+                f"Table 1 rows: {table1_count:,}",
+                f"Table 2 rows: {table2_count:,}",
+                f"Rows only in Table 1: {rows_only_t1:,}",
+                f"Rows only in Table 2: {rows_only_t2:,}",
+                f"Matched rows: {matched_rows:,}",
+                "",
+                f"All columns match: {all_columns_match}",
+                f"Tables identical: {final_is_identical}",
+                f"Match percentage: {match_pct:.2f}%",
+                "",
+                "=" * 70,
+            ]
+
+            return ComparisonResult(
+                comparison_id=comparison_id,
+                table1_name=full_table1,
+                table2_name=full_table2,
+                comparison_time=start_time,
+                table1_row_count=table1_count,
+                table2_row_count=table2_count,
+                matched_rows=int(matched_rows),
+                rows_only_in_table1=rows_only_t1,
+                rows_only_in_table2=rows_only_t2,
+                rows_with_diff_values=0,
+                match_percentage=match_pct,
+                is_identical=final_is_identical,
+                has_primary_key=True,
+                primary_key_columns=join_columns,
+                execution_time_seconds=exec_time,
+                comparison_mode="snowpark",
+                df1_unq_rows=df1_unq if not df1_unq.empty else None,
+                df2_unq_rows=df2_unq if not df2_unq.empty else None,
+                datacompy_report="\n".join(report_lines),
+            )
+
+        except Exception as e:
+            exec_time = (datetime.now() - start_time).total_seconds()
+            logger.error(f"Snowpark comparison failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return ComparisonResult(
+                comparison_id=comparison_id,
+                table1_name=table1,
+                table2_name=table2,
+                comparison_time=start_time,
+                table1_row_count=0,
+                table2_row_count=0,
+                matched_rows=0,
+                rows_only_in_table1=0,
+                rows_only_in_table2=0,
+                rows_with_diff_values=0,
+                match_percentage=0.0,
+                is_identical=False,
+                has_primary_key=bool(join_columns),
+                primary_key_columns=join_columns or [],
+                execution_time_seconds=exec_time,
+                error_message=str(e),
+                comparison_mode="snowpark",
+            )
+
+    def export_results(
+        self,
+        results: List[ComparisonResult],
+        output_path: str,
+        format: str = "csv",
+        include_details: bool = True,
+    ) -> str:
+        """Export comparison results to file."""
+        records = [r.to_dict() for r in results]
+        df = pd.DataFrame(records)
+
+        if format == "csv":
+            filepath = f"{output_path}.csv"
+            df.to_csv(filepath, index=False)
+        elif format == "excel":
+            filepath = f"{output_path}.xlsx"
+            with pd.ExcelWriter(filepath, engine="xlsxwriter") as writer:
+                df.to_excel(writer, sheet_name="Summary", index=False)
+                if include_details:
+                    for result in results:
+                        if result.df1_unq_rows is not None and len(result.df1_unq_rows) > 0:
+                            sheet_name = f"t1_unq_{result.comparison_id[:20]}"
+                            result.df1_unq_rows.to_excel(writer, sheet_name=sheet_name, index=False)
+                        if result.df2_unq_rows is not None and len(result.df2_unq_rows) > 0:
+                            sheet_name = f"t2_unq_{result.comparison_id[:20]}"
+                            result.df2_unq_rows.to_excel(writer, sheet_name=sheet_name, index=False)
+        elif format == "json":
+            filepath = f"{output_path}.json"
+            output_data = []
+            for r in results:
+                data = r.to_dict()
+                if include_details:
+                    if r.df1_unq_rows is not None:
+                        data["df1_unique_rows"] = r.df1_unq_rows.to_dict(orient="records")
+                    if r.df2_unq_rows is not None:
+                        data["df2_unique_rows"] = r.df2_unq_rows.to_dict(orient="records")
+                output_data.append(data)
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(output_data, f, indent=2, default=str, ensure_ascii=False)
         else:
-            cols_str = "*"
+            raise ValueError(f"Unknown format: {format}")
 
-        query = f"SELECT {cols_str} FROM {table_name}"
+        logger.info(f"Results exported to: {filepath}")
+        return filepath
 
-        if sample_limit:
-            query += f" LIMIT {sample_limit}"
 
-        logger.info(f"Loading table: {table_name}")
-        df = pd.read_sql(query, conn)
-        logger.info(f"  Loaded {len(df):,} rows, {len(df.columns)} columns")
+# ============================================================================
+# LocalFileComparer - Compare local CSV/Excel files
+# ============================================================================
 
-        return df
+class LocalFileComparer:
+    """
+    Compare local CSV/Excel files using datacompy.
 
-    def _get_row_count(self, table_name: str) -> int:
-        """Get row count for a table."""
-        conn = self.connect()
-        cursor = conn.cursor()
-        cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-        count = cursor.fetchone()[0]
-        cursor.close()
-        return count
+    Always available, no Snowflake connection required.
+    """
+
+    def __init__(self, comparison_config: Optional[ComparisonConfig] = None):
+        self.cmp_config = comparison_config or ComparisonConfig()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def _generate_comparison_id(self) -> str:
+        timestamp = datetime.now().isoformat()
+        return hashlib.md5(timestamp.encode()).hexdigest()[:16]
+
+    def _load_file(self, file_path: str) -> pd.DataFrame:
+        """Load a file into a pandas DataFrame."""
+        file_path_lower = file_path.lower()
+        if file_path_lower.endswith('.csv'):
+            return pd.read_csv(file_path)
+        elif file_path_lower.endswith(('.xlsx', '.xls')):
+            return pd.read_excel(file_path)
+        elif file_path_lower.endswith('.parquet'):
+            return pd.read_parquet(file_path)
+        elif file_path_lower.endswith('.json'):
+            return pd.read_json(file_path)
+        else:
+            return pd.read_csv(file_path)
 
     def compare(
         self,
@@ -267,95 +656,59 @@ class SnowflakeTableComparer:
         join_columns: Optional[Union[str, List[str]]] = None,
         abs_tol: Optional[float] = None,
         rel_tol: float = 0,
-        df1_name: Optional[str] = None,
-        df2_name: Optional[str] = None,
-        sample_limit: Optional[int] = None,
-        ignore_spaces: bool = False,
-        ignore_case: bool = False,
+        ignore_spaces: bool = True,
+        ignore_case: bool = True,
+        **kwargs,
     ) -> ComparisonResult:
-        """
-        Compare two Snowflake tables using datacompy.Compare.
-
-        Data is loaded into pandas DataFrames for comparison.
-
-        Args:
-            table1: First table name (fully qualified: DB.SCHEMA.TABLE)
-            table2: Second table name (fully qualified: DB.SCHEMA.TABLE)
-            join_columns: Column(s) to join on. Can be:
-                - str: Single column or comma-separated columns
-                - List[str]: List of column names
-                - None: Hash-based comparison
-            abs_tol: Absolute tolerance for numeric comparisons (default from config)
-            rel_tol: Relative tolerance for numeric comparisons
-            df1_name: Optional display name for table1
-            df2_name: Optional display name for table2
-            sample_limit: Limit rows loaded (for large tables)
-            ignore_spaces: Ignore leading/trailing spaces in strings
-            ignore_case: Ignore case in string comparisons
-
-        Returns:
-            ComparisonResult object with detailed comparison results
-        """
+        """Compare two local files using datacompy.Compare."""
         start_time = datetime.now()
         comparison_id = self._generate_comparison_id()
 
-        # Use config defaults if not specified
         if abs_tol is None:
             abs_tol = self.cmp_config.numeric_tolerance
 
-        # Parse join_columns if string
         if isinstance(join_columns, str):
             join_columns = [c.strip() for c in join_columns.split(",")]
 
-        # Handle no join columns (hash comparison)
-        if not join_columns or len(join_columns) == 0:
-            return self._compare_hash_fallback(
-                table1, table2, comparison_id, start_time, df1_name, df2_name, sample_limit
-            )
-
         try:
-            logger.info(f"Comparing tables using datacompy.Compare:")
-            logger.info(f"  Table 1: {table1}")
-            logger.info(f"  Table 2: {table2}")
-            logger.info(f"  Join columns: {join_columns}")
+            logger.info(f"Comparing local files:")
+            logger.info(f"  File 1: {table1}")
+            logger.info(f"  File 2: {table2}")
 
-            # Load tables into pandas
-            df1 = self._load_table_to_pandas(table1, sample_limit=sample_limit)
-            df2 = self._load_table_to_pandas(table2, sample_limit=sample_limit)
+            df1 = self._load_file(table1)
+            df2 = self._load_file(table2)
 
             table1_count = len(df1)
             table2_count = len(df2)
 
-            # Normalize column names to uppercase for comparison
+            # Normalize column names
             df1.columns = [c.upper() for c in df1.columns]
             df2.columns = [c.upper() for c in df2.columns]
-            join_columns = [c.upper() for c in join_columns]
 
-            # Create datacompy Compare instance
+            if join_columns:
+                join_columns = [c.upper() for c in join_columns]
+
+            # Hash-based comparison if no join columns
+            if not join_columns:
+                return self._compare_hash_local(df1, df2, table1, table2, comparison_id, start_time)
+
             comparison = Compare(
                 df1=df1,
                 df2=df2,
                 join_columns=join_columns,
                 abs_tol=abs_tol,
                 rel_tol=rel_tol,
-                df1_name=df1_name or table1.split(".")[-1],
-                df2_name=df2_name or table2.split(".")[-1],
+                df1_name=os.path.basename(table1),
+                df2_name=os.path.basename(table2),
                 ignore_spaces=ignore_spaces,
                 ignore_case=ignore_case,
             )
 
-            # Get statistics from datacompy
             is_identical = comparison.matches()
-
-            # Get unique rows counts
             rows_only_t1 = len(comparison.df1_unq_rows)
             rows_only_t2 = len(comparison.df2_unq_rows)
-
-            # Get intersect rows and count mismatches
             intersect_count = comparison.intersect_rows.shape[0]
 
-            # Count rows with different values
-            # intersect_rows contains columns like 'col_match' for each column
             mismatch_columns = [c for c in comparison.intersect_rows.columns if c.endswith('_match')]
             if mismatch_columns:
                 all_match = comparison.intersect_rows[mismatch_columns].all(axis=1)
@@ -365,26 +718,9 @@ class SnowflakeTableComparer:
                 matched_rows = intersect_count
                 rows_with_diff = 0
 
-            # Get column differences
-            columns_only_t1 = list(comparison.df1_unq_columns())
-            columns_only_t2 = list(comparison.df2_unq_columns())
-
-            # Calculate match percentage
             total_rows = table1_count + table2_count
-            if total_rows > 0:
-                match_pct = (2 * matched_rows / total_rows) * 100
-            else:
-                match_pct = 100.0
+            match_pct = (2 * matched_rows / total_rows) * 100 if total_rows > 0 else 100.0
 
-            # Get the full report
-            datacompy_report = comparison.report()
-
-            # Build diff details
-            diff_details = self._build_diff_details(
-                comparison, join_columns, self.cmp_config.max_diff_rows
-            )
-
-            # Execution time
             exec_time = (datetime.now() - start_time).total_seconds()
 
             return ComparisonResult(
@@ -402,18 +738,14 @@ class SnowflakeTableComparer:
                 is_identical=is_identical,
                 has_primary_key=True,
                 primary_key_columns=join_columns,
-                columns_only_in_table1=columns_only_t1,
-                columns_only_in_table2=columns_only_t2,
                 execution_time_seconds=exec_time,
-                diff_details=diff_details,
-                datacompy_report=datacompy_report,
+                comparison_mode="local",
+                datacompy_report=comparison.report(),
             )
 
         except Exception as e:
             exec_time = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Comparison failed: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+            logger.error(f"Local comparison failed: {e}")
             return ComparisonResult(
                 comparison_id=comparison_id,
                 table1_name=table1,
@@ -427,152 +759,42 @@ class SnowflakeTableComparer:
                 rows_with_diff_values=0,
                 match_percentage=0.0,
                 is_identical=False,
-                has_primary_key=join_columns is not None and len(join_columns) > 0,
+                has_primary_key=bool(join_columns),
                 primary_key_columns=join_columns or [],
                 execution_time_seconds=exec_time,
                 error_message=str(e),
+                comparison_mode="local",
             )
 
-    def _compare_hash_fallback(
-        self,
-        table1: str,
-        table2: str,
-        comparison_id: str,
-        start_time: datetime,
-        df1_name: Optional[str] = None,
-        df2_name: Optional[str] = None,
-        sample_limit: Optional[int] = None,
+    def _compare_hash_local(
+        self, df1: pd.DataFrame, df2: pd.DataFrame,
+        table1: str, table2: str, comparison_id: str, start_time: datetime
     ) -> ComparisonResult:
-        """
-        Hash-based comparison when no join columns are provided.
-
-        Uses SQL-side SHA256 hash for efficient comparison.
-        """
+        """Hash-based comparison for local files."""
         try:
-            conn = self.connect()
-            cursor = conn.cursor()
+            table1_count = len(df1)
+            table2_count = len(df2)
 
-            logger.info("=" * 60)
-            logger.info("HASH-BASED COMPARISON (No Primary Key)")
-            logger.info("=" * 60)
-            logger.info(f"Table 1: {table1}")
-            logger.info(f"Table 2: {table2}")
+            def row_hash(row):
+                return hashlib.sha256(str(row.to_dict()).encode()).hexdigest()
 
-            # Get row counts
-            table1_count = self._get_row_count(table1)
-            table2_count = self._get_row_count(table2)
-            logger.info(f"Table 1 row count: {table1_count:,}")
-            logger.info(f"Table 2 row count: {table2_count:,}")
+            df1_copy = df1.copy()
+            df2_copy = df2.copy()
+            df1_copy['_hash'] = df1.apply(row_hash, axis=1)
+            df2_copy['_hash'] = df2.apply(row_hash, axis=1)
 
-            # Get column info
-            cursor.execute(f"SELECT * FROM {table1} LIMIT 0")
-            t1_columns = [desc[0] for desc in cursor.description]
-            cursor.execute(f"SELECT * FROM {table2} LIMIT 0")
-            t2_columns = [desc[0] for desc in cursor.description]
+            hash_counts1 = df1_copy['_hash'].value_counts()
+            hash_counts2 = df2_copy['_hash'].value_counts()
 
-            common_columns = set(t1_columns) & set(t2_columns)
-            columns_only_t1 = list(set(t1_columns) - set(t2_columns))
-            columns_only_t2 = list(set(t2_columns) - set(t1_columns))
+            common_hashes = set(hash_counts1.index) & set(hash_counts2.index)
+            matched_rows = sum(min(hash_counts1[h], hash_counts2[h]) for h in common_hashes)
 
-            # Find matching rows using hash
-            matched_hash_query = f"""
-                WITH t1_hashes AS (
-                    SELECT SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash, COUNT(*) AS cnt
-                    FROM {table1}
-                    GROUP BY row_hash
-                ),
-                t2_hashes AS (
-                    SELECT SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash, COUNT(*) AS cnt
-                    FROM {table2}
-                    GROUP BY row_hash
-                )
-                SELECT COALESCE(SUM(LEAST(t1.cnt, t2.cnt)), 0) AS matched_rows
-                FROM t1_hashes t1
-                INNER JOIN t2_hashes t2 ON t1.row_hash = t2.row_hash
-            """
-            cursor.execute(matched_hash_query)
-            matched_rows = cursor.fetchone()[0] or 0
+            rows_only_t1 = table1_count - sum(min(hash_counts1.get(h, 0), hash_counts2.get(h, 0)) for h in hash_counts1.index)
+            rows_only_t2 = table2_count - sum(min(hash_counts1.get(h, 0), hash_counts2.get(h, 0)) for h in hash_counts2.index)
 
-            # Find rows only in table1
-            only_t1_query = f"""
-                WITH t1_hashes AS (
-                    SELECT SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash, COUNT(*) AS cnt
-                    FROM {table1}
-                    GROUP BY row_hash
-                ),
-                t2_hashes AS (
-                    SELECT SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash, COUNT(*) AS cnt
-                    FROM {table2}
-                    GROUP BY row_hash
-                )
-                SELECT COALESCE(SUM(
-                    CASE
-                        WHEN t2.row_hash IS NULL THEN t1.cnt
-                        WHEN t1.cnt > t2.cnt THEN t1.cnt - t2.cnt
-                        ELSE 0
-                    END
-                ), 0) AS only_t1
-                FROM t1_hashes t1
-                LEFT JOIN t2_hashes t2 ON t1.row_hash = t2.row_hash
-            """
-            cursor.execute(only_t1_query)
-            rows_only_t1 = cursor.fetchone()[0] or 0
-
-            # Find rows only in table2
-            only_t2_query = f"""
-                WITH t1_hashes AS (
-                    SELECT SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash, COUNT(*) AS cnt
-                    FROM {table1}
-                    GROUP BY row_hash
-                ),
-                t2_hashes AS (
-                    SELECT SHA2(OBJECT_CONSTRUCT(*), 256) AS row_hash, COUNT(*) AS cnt
-                    FROM {table2}
-                    GROUP BY row_hash
-                )
-                SELECT COALESCE(SUM(
-                    CASE
-                        WHEN t1.row_hash IS NULL THEN t2.cnt
-                        WHEN t2.cnt > t1.cnt THEN t2.cnt - t1.cnt
-                        ELSE 0
-                    END
-                ), 0) AS only_t2
-                FROM t2_hashes t2
-                LEFT JOIN t1_hashes t1 ON t1.row_hash = t2.row_hash
-            """
-            cursor.execute(only_t2_query)
-            rows_only_t2 = cursor.fetchone()[0] or 0
-
-            cursor.close()
-
-            logger.info(f"Matched rows: {matched_rows:,}")
-            logger.info(f"Rows only in Table 1: {rows_only_t1:,}")
-            logger.info(f"Rows only in Table 2: {rows_only_t2:,}")
-
-            # Calculate match percentage
             total_rows = table1_count + table2_count
-            if total_rows > 0:
-                match_pct = (2 * matched_rows / total_rows) * 100
-            else:
-                match_pct = 100.0
-
-            is_identical = (
-                table1_count == table2_count
-                and rows_only_t1 == 0
-                and rows_only_t2 == 0
-            )
-
-            # Generate report
-            datacompy_report = self._generate_hash_comparison_report(
-                table1, table2,
-                df1_name or table1.split(".")[-1],
-                df2_name or table2.split(".")[-1],
-                table1_count, table2_count,
-                matched_rows, rows_only_t1, rows_only_t2,
-                t1_columns, t2_columns,
-                common_columns, columns_only_t1, columns_only_t2,
-                match_pct, is_identical
-            )
+            match_pct = (2 * matched_rows / total_rows) * 100 if total_rows > 0 else 100.0
+            is_identical = table1_count == table2_count and rows_only_t1 == 0 and rows_only_t2 == 0
 
             exec_time = (datetime.now() - start_time).total_seconds()
 
@@ -591,18 +813,12 @@ class SnowflakeTableComparer:
                 is_identical=is_identical,
                 has_primary_key=False,
                 primary_key_columns=[],
-                columns_only_in_table1=columns_only_t1,
-                columns_only_in_table2=columns_only_t2,
                 execution_time_seconds=exec_time,
-                diff_details=None,
-                datacompy_report=datacompy_report,
+                comparison_mode="local_hash",
             )
 
         except Exception as e:
             exec_time = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Hash comparison failed: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
             return ComparisonResult(
                 comparison_id=comparison_id,
                 table1_name=table1,
@@ -620,296 +836,86 @@ class SnowflakeTableComparer:
                 primary_key_columns=[],
                 execution_time_seconds=exec_time,
                 error_message=str(e),
+                comparison_mode="local_hash",
             )
 
-    def _generate_hash_comparison_report(
-        self,
-        table1: str,
-        table2: str,
-        df1_name: str,
-        df2_name: str,
-        table1_count: int,
-        table2_count: int,
-        matched_rows: int,
-        rows_only_t1: int,
-        rows_only_t2: int,
-        t1_columns: List[str],
-        t2_columns: List[str],
-        common_columns: set,
-        columns_only_t1: List[str],
-        columns_only_t2: List[str],
-        match_pct: float,
-        is_identical: bool
-    ) -> str:
-        """Generate a detailed report for hash-based comparison."""
-
-        report_lines = [
-            "",
-            "=" * 70,
-            "HASH-BASED COMPARISON REPORT (No Primary Key)",
-            "=" * 70,
-            "",
-            "DataFrames/Tables",
-            "-" * 70,
-            f"  {df1_name}: {table1}",
-            f"  {df2_name}: {table2}",
-            "",
-            "DataFrame Summary",
-            "-" * 70,
-            f"  {'Metric':<30} {df1_name:>15} {df2_name:>15}",
-            f"  {'-'*30} {'-'*15} {'-'*15}",
-            f"  {'Total Rows':<30} {table1_count:>15,} {table2_count:>15,}",
-            f"  {'Total Columns':<30} {len(t1_columns):>15} {len(t2_columns):>15}",
-            "",
-            "Column Summary",
-            "-" * 70,
-            f"  Columns in common: {len(common_columns)}",
-            f"  Columns only in {df1_name}: {len(columns_only_t1)}",
-            f"  Columns only in {df2_name}: {len(columns_only_t2)}",
-        ]
-
-        if columns_only_t1:
-            report_lines.append(f"    -> {columns_only_t1}")
-        if columns_only_t2:
-            report_lines.append(f"    -> {columns_only_t2}")
-
-        report_lines.extend([
-            "",
-            "Row Comparison (Hash-Based)",
-            "-" * 70,
-            f"  Matching rows (identical):     {matched_rows:>15,}",
-            f"  Rows only in {df1_name}:       {rows_only_t1:>15,}",
-            f"  Rows only in {df2_name}:       {rows_only_t2:>15,}",
-            "",
-            "  Note: Hash comparison uses SHA256(OBJECT_CONSTRUCT(*)) to compare",
-            "  entire rows. Without a primary key, we cannot identify which",
-            "  specific columns differ - rows either match completely or don't.",
-            "",
-            "Match Statistics",
-            "-" * 70,
-            f"  Match Percentage: {match_pct:.2f}%",
-            f"  Tables Identical: {is_identical}",
-            "",
-            "=" * 70,
-        ])
-
-        return "\n".join(report_lines)
-
-    def _build_diff_details(
-        self,
-        comparison: Compare,
-        join_columns: List[str],
-        max_rows: int = 100
-    ) -> Optional[pd.DataFrame]:
-        """Build detailed diff DataFrame from datacompy.Compare."""
-        diff_records = []
-
-        try:
-            # Get unique rows from table 1
-            df1_unq = comparison.df1_unq_rows.head(max_rows)
-            for _, row in df1_unq.iterrows():
-                pk_value = "|".join(str(row.get(c, "")) for c in join_columns if c in row.index)
-                diff_records.append({
-                    "diff_type": "ONLY_TABLE1",
-                    "primary_key": pk_value,
-                    "column": None,
-                    "value_table1": str(row.to_dict()),
-                    "value_table2": None,
-                })
-
-            # Get unique rows from table 2
-            df2_unq = comparison.df2_unq_rows.head(max_rows)
-            for _, row in df2_unq.iterrows():
-                pk_value = "|".join(str(row.get(c, "")) for c in join_columns if c in row.index)
-                diff_records.append({
-                    "diff_type": "ONLY_TABLE2",
-                    "primary_key": pk_value,
-                    "column": None,
-                    "value_table1": None,
-                    "value_table2": str(row.to_dict()),
-                })
-
-        except Exception as e:
-            logger.warning(f"Could not build diff details: {e}")
-
-        return pd.DataFrame(diff_records) if diff_records else None
-
-    def compare_batch(
-        self,
-        table_pairs: List[Tuple[str, str, Optional[Union[str, List[str]]]]],
-        **kwargs,
-    ) -> List[ComparisonResult]:
-        """
-        Compare multiple table pairs.
-
-        Args:
-            table_pairs: List of (table1, table2, join_columns) tuples
-            **kwargs: Additional arguments passed to compare()
-
-        Returns:
-            List of ComparisonResult objects
-        """
-        results = []
-        total = len(table_pairs)
-
-        for i, pair in enumerate(table_pairs, 1):
-            table1, table2, join_cols = pair
-            logger.info(f"[{i}/{total}] Comparing {table1} vs {table2}...")
-
-            result = self.compare(table1, table2, join_columns=join_cols, **kwargs)
-            results.append(result)
-
-            status = "IDENTICAL" if result.is_identical else "DIFFERENT"
-            if result.error_message:
-                status = f"ERROR: {result.error_message[:50]}"
-            logger.info(f"  -> {status} ({result.match_percentage:.2f}%)")
-
-        return results
-
-    def export_results(
-        self,
-        results: List[ComparisonResult],
-        output_path: str,
-        format: str = "csv",
-        include_details: bool = True,
-    ) -> str:
-        """
-        Export comparison results to file.
-
-        Args:
-            results: List of comparison results
-            output_path: Output file path (without extension)
-            format: Export format (csv, excel, json)
-            include_details: Include detailed diff data in export
-
-        Returns:
-            Path to exported file
-        """
-        # Convert results to DataFrame
+    def export_results(self, results: List[ComparisonResult], output_path: str, format: str = "csv", **kwargs) -> str:
         records = [r.to_dict() for r in results]
         df = pd.DataFrame(records)
-
         if format == "csv":
             filepath = f"{output_path}.csv"
             df.to_csv(filepath, index=False)
-
         elif format == "excel":
             filepath = f"{output_path}.xlsx"
-            with pd.ExcelWriter(filepath, engine="xlsxwriter") as writer:
-                # Summary sheet
-                df.to_excel(writer, sheet_name="Summary", index=False)
-
-                # Detailed diff sheets
-                if include_details:
-                    for result in results:
-                        if result.diff_details is not None and len(result.diff_details) > 0:
-                            sheet_name = f"diff_{result.comparison_id[:25]}"
-                            result.diff_details.to_excel(
-                                writer, sheet_name=sheet_name, index=False
-                            )
-
-                        # Add datacompy report
-                        if result.datacompy_report:
-                            report_sheet = f"report_{result.comparison_id[:23]}"
-                            report_lines = result.datacompy_report.split('\n')
-                            report_df = pd.DataFrame({"Report": report_lines})
-                            report_df.to_excel(writer, sheet_name=report_sheet, index=False)
-
+            df.to_excel(filepath, index=False)
         elif format == "json":
             filepath = f"{output_path}.json"
-            output_data = []
-            for r in results:
-                data = r.to_dict()
-                if include_details and r.diff_details is not None:
-                    data["diff_details"] = r.diff_details.to_dict(orient="records")
-                if r.datacompy_report:
-                    data["datacompy_report"] = r.datacompy_report
-                output_data.append(data)
-
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(output_data, f, indent=2, default=str, ensure_ascii=False)
-
+            with open(filepath, "w") as f:
+                json.dump(records, f, indent=2, default=str)
         else:
-            raise ValueError(f"Unknown format: {format}. Use 'csv', 'excel', or 'json'.")
-
-        logger.info(f"Results exported to: {filepath}")
+            raise ValueError(f"Unknown format: {format}")
         return filepath
 
 
-# Alias for backwards compatibility
-SnowflakeDataComparer = SnowflakeTableComparer
+# ============================================================================
+# Aliases and convenience functions
+# ============================================================================
+
+# Main recommended comparer (Snowpark if available, otherwise local)
+SnowflakeDataComparer = SnowparkComparer if SNOWPARK_AVAILABLE else LocalFileComparer
 
 
 def quick_compare(
     table1: str,
     table2: str,
     join_columns: Optional[Union[str, List[str]]] = None,
+    use_snowpark: bool = True,
     **kwargs,
 ) -> ComparisonResult:
     """
-    Quick comparison function for simple use cases.
+    Quick comparison function.
 
-    Uses datacompy.Compare with pandas DataFrames.
-
-    Args:
-        table1: First table name (fully qualified: DB.SCHEMA.TABLE)
-        table2: Second table name
-        join_columns: Column(s) to join on - string, list, or None for hash
-        **kwargs: Additional arguments passed to compare()
-
-    Returns:
-        ComparisonResult object
-
-    Example:
-        # With join column
-        result = quick_compare("DB.SCHEMA.TABLE1", "DB.SCHEMA.TABLE2", "ID")
-
-        # With composite key
-        result = quick_compare("DB.SCHEMA.TABLE1", "DB.SCHEMA.TABLE2", ["COL1", "COL2"])
-
-        # Hash comparison (no join columns)
-        result = quick_compare("DB.SCHEMA.TABLE1", "DB.SCHEMA.TABLE2")
-
-        # With numeric tolerance
-        result = quick_compare("DB.SCHEMA.TABLE1", "DB.SCHEMA.TABLE2", "ID", abs_tol=0.01)
+    Uses Snowpark for remote comparison if available and use_snowpark=True,
+    otherwise falls back to local file comparison.
     """
-    with SnowflakeTableComparer() as comparer:
-        return comparer.compare(table1, table2, join_columns=join_columns, **kwargs)
+    # Determine if inputs are local files
+    is_file1 = os.path.exists(table1) or any(table1.lower().endswith(ext) for ext in ['.csv', '.xlsx', '.json', '.parquet'])
+    is_file2 = os.path.exists(table2) or any(table2.lower().endswith(ext) for ext in ['.csv', '.xlsx', '.json', '.parquet'])
+
+    if is_file1 or is_file2:
+        with LocalFileComparer() as comparer:
+            return comparer.compare(table1, table2, join_columns=join_columns, **kwargs)
+    elif use_snowpark and SNOWPARK_AVAILABLE:
+        with SnowparkComparer() as comparer:
+            return comparer.compare(table1, table2, join_columns=join_columns, **kwargs)
+    else:
+        raise RuntimeError(
+            "No suitable comparer available. "
+            "For Snowflake tables, install snowflake-snowpark-python (Python 3.9-3.13). "
+            "For local files, provide file paths with extensions (.csv, .xlsx, etc.)"
+        )
 
 
-# Convenience alias
 compare_tables = quick_compare
 
 
 if __name__ == "__main__":
+    print(get_availability_status())
     print("""
-+===========================================================================+
-|     SNOWFLAKE DATA COMPARISON TOOL                                        |
-|     Using datacompy.Compare (pandas-based comparison)                     |
-|     Compatible with Python 3.13+                                          |
-+===========================================================================+
-
-This module uses datacompy with snowflake-connector-python.
-Data is loaded into pandas DataFrames for comparison.
-
 Usage:
-    from snowflake_compare import quick_compare, SnowflakeTableComparer
+    from snowflake_compare import SnowparkComparer, LocalFileComparer, quick_compare
 
-    # Quick comparison
-    result = quick_compare(
-        "TEAM_DB.EXTERNAL.TABLE1",
-        "TEAM_DB.EXTERNAL.TABLE2",
-        join_columns="ID"
-    )
-    print(result)
-    print(result.get_datacompy_report())
+    # Remote Snowflake comparison (Snowpark)
+    with SnowparkComparer() as comparer:
+        result = comparer.compare("TABLE1", "TABLE2", join_columns=["ID"])
+        print(result)
 
-    # Advanced usage with context manager
-    with SnowflakeTableComparer() as comparer:
-        result = comparer.compare("TABLE1", "TABLE2", join_columns=["COL1", "COL2"])
-        comparer.export_results([result], "output", format="excel")
+    # Local file comparison
+    with LocalFileComparer() as comparer:
+        result = comparer.compare("file1.csv", "file2.csv", join_columns=["ID"])
+        print(result)
 
-Or use the CLI:
-    python run_comparison.py compare TABLE1 TABLE2 --pk ID
-    python run_comparison.py batch config.yaml --export results --format excel
+CLI:
+    python run_comparison.py compare TABLE1 TABLE2 --pk ID --mode snowpark
+    python run_comparison.py compare file1.csv file2.csv --pk ID
 """)
