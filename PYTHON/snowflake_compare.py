@@ -356,6 +356,39 @@ class SnowparkComparer:
         session.sql(f"USE SCHEMA {schema}").collect()
         logger.info(f"Using {database}.{schema}")
 
+    def get_table_columns(self, table_name: str) -> List[str]:
+        """Get list of column names from a Snowflake table."""
+        session = self.connect()
+        try:
+            # Use DESCRIBE to get column information
+            result = session.sql(f"DESCRIBE TABLE {table_name}").collect()
+            columns = [row[0] for row in result]  # First column is the column name
+            return columns
+        except Exception as e:
+            logger.warning(f"Could not get columns for {table_name}: {e}")
+            # Fallback: try to get columns from a LIMIT 0 query
+            try:
+                df = session.table(table_name).limit(0).to_pandas()
+                return list(df.columns)
+            except Exception as e2:
+                logger.error(f"Fallback column detection failed: {e2}")
+                return []
+
+    def _match_column_case(self, join_columns: List[str], table_columns: List[str]) -> List[str]:
+        """Match join column names to actual table column names (case-insensitive)."""
+        # Create a mapping from uppercase to actual column name
+        column_map = {col.upper(): col for col in table_columns}
+
+        matched = []
+        for jc in join_columns:
+            jc_upper = jc.upper()
+            if jc_upper in column_map:
+                matched.append(column_map[jc_upper])
+            else:
+                # Column not found, keep original (will fail with clear error)
+                matched.append(jc)
+        return matched
+
     def compare(
         self,
         table1: str,
@@ -393,34 +426,80 @@ class SnowparkComparer:
         start_time = datetime.now()
         comparison_id = self._generate_comparison_id()
 
-        # Parse join_columns
+        # Parse join_columns (don't force uppercase yet - we'll match case later)
         if isinstance(join_columns, str):
-            join_columns = [c.strip().upper() for c in join_columns.split(",")]
+            join_columns = [c.strip() for c in join_columns.split(",")]
         elif isinstance(join_columns, set):
-            join_columns = list(join_columns)
+            join_columns = [str(c) for c in join_columns]
         elif join_columns:
-            join_columns = [c.upper() for c in join_columns]
+            join_columns = [str(c) for c in join_columns]
 
+        # If no join_columns provided, try to auto-detect common columns
         if not join_columns:
-            return ComparisonResult(
-                comparison_id=comparison_id,
-                table1_name=table1,
-                table2_name=table2,
-                comparison_time=start_time,
-                table1_row_count=0,
-                table2_row_count=0,
-                matched_rows=0,
-                rows_only_in_table1=0,
-                rows_only_in_table2=0,
-                rows_with_diff_values=0,
-                match_percentage=0.0,
-                is_identical=False,
-                has_primary_key=False,
-                primary_key_columns=[],
-                execution_time_seconds=0.0,
-                error_message="join_columns is required for Snowpark comparison. Use LocalFileComparer for hash-based comparison.",
-                comparison_mode="snowpark",
-            )
+            logger.info("No join_columns provided, attempting to auto-detect...")
+            try:
+                session = self.connect()
+
+                # Build table names to get columns
+                db = database or self.sf_config.database
+                sch1 = schema1 or self.sf_config.schema
+                sch2 = schema2 or sch1
+
+                full_t1 = table1 if "." in table1 else f"{db}.{sch1}.{table1}"
+                full_t2 = table2 if "." in table2 else f"{db}.{sch2}.{table2}"
+
+                t1_cols = self.get_table_columns(full_t1)
+                t2_cols = self.get_table_columns(full_t2)
+
+                # Find common columns (case-insensitive)
+                t1_cols_upper = {c.upper(): c for c in t1_cols}
+                t2_cols_upper = {c.upper(): c for c in t2_cols}
+                common_upper = set(t1_cols_upper.keys()) & set(t2_cols_upper.keys())
+
+                if common_upper:
+                    # Use column names from table1
+                    join_columns = [t1_cols_upper[c] for c in common_upper]
+                    logger.info(f"Auto-detected common columns as join keys: {join_columns}")
+                else:
+                    return ComparisonResult(
+                        comparison_id=comparison_id,
+                        table1_name=table1,
+                        table2_name=table2,
+                        comparison_time=start_time,
+                        table1_row_count=0,
+                        table2_row_count=0,
+                        matched_rows=0,
+                        rows_only_in_table1=0,
+                        rows_only_in_table2=0,
+                        rows_with_diff_values=0,
+                        match_percentage=0.0,
+                        is_identical=False,
+                        has_primary_key=False,
+                        primary_key_columns=[],
+                        execution_time_seconds=0.0,
+                        error_message=f"join_columns is required. No common columns found between tables. Table1 columns: {t1_cols}, Table2 columns: {t2_cols}",
+                        comparison_mode="snowpark",
+                    )
+            except Exception as e:
+                return ComparisonResult(
+                    comparison_id=comparison_id,
+                    table1_name=table1,
+                    table2_name=table2,
+                    comparison_time=start_time,
+                    table1_row_count=0,
+                    table2_row_count=0,
+                    matched_rows=0,
+                    rows_only_in_table1=0,
+                    rows_only_in_table2=0,
+                    rows_with_diff_values=0,
+                    match_percentage=0.0,
+                    is_identical=False,
+                    has_primary_key=False,
+                    primary_key_columns=[],
+                    execution_time_seconds=0.0,
+                    error_message=f"join_columns is required for Snowpark comparison. Error detecting columns: {e}",
+                    comparison_mode="snowpark",
+                )
 
         try:
             session = self.connect()
@@ -444,14 +523,61 @@ class SnowparkComparer:
             logger.info(f"Comparing tables using Snowpark (remote):")
             logger.info(f"  Table 1: {full_table1}")
             logger.info(f"  Table 2: {full_table2}")
-            logger.info(f"  Join columns: {join_columns}")
+
+            # Get actual column names from tables to match case
+            t1_columns = self.get_table_columns(full_table1)
+            t2_columns = self.get_table_columns(full_table2)
+
+            logger.info(f"  Table 1 columns: {t1_columns}")
+            logger.info(f"  Table 2 columns: {t2_columns}")
+
+            # Validate join columns exist in both tables
+            t1_cols_upper = {c.upper() for c in t1_columns}
+            t2_cols_upper = {c.upper() for c in t2_columns}
+            join_cols_upper = {c.upper() for c in join_columns}
+
+            missing_in_t1 = join_cols_upper - t1_cols_upper
+            missing_in_t2 = join_cols_upper - t2_cols_upper
+
+            if missing_in_t1 or missing_in_t2:
+                error_parts = []
+                if missing_in_t1:
+                    error_parts.append(f"Columns {missing_in_t1} not found in {full_table1}. Available: {t1_columns}")
+                if missing_in_t2:
+                    error_parts.append(f"Columns {missing_in_t2} not found in {full_table2}. Available: {t2_columns}")
+                error_msg = " | ".join(error_parts)
+
+                return ComparisonResult(
+                    comparison_id=comparison_id,
+                    table1_name=full_table1,
+                    table2_name=full_table2,
+                    comparison_time=start_time,
+                    table1_row_count=0,
+                    table2_row_count=0,
+                    matched_rows=0,
+                    rows_only_in_table1=0,
+                    rows_only_in_table2=0,
+                    rows_with_diff_values=0,
+                    match_percentage=0.0,
+                    is_identical=False,
+                    has_primary_key=True,
+                    primary_key_columns=join_columns,
+                    execution_time_seconds=(datetime.now() - start_time).total_seconds(),
+                    error_message=error_msg,
+                    comparison_mode="snowpark",
+                )
+
+            # Match column case to actual table columns
+            # Use the case from table1 (Snowflake columns are typically uppercase)
+            matched_join_columns = self._match_column_case(join_columns, t1_columns)
+            logger.info(f"  Join columns (matched case): {matched_join_columns}")
 
             # Create SnowflakeCompare instance
             compare = snowflake_compare_module.SnowflakeCompare(
                 session,
                 full_table1,
                 full_table2,
-                join_columns=join_columns,
+                join_columns=matched_join_columns,
                 abs_tol=abs_tol,
                 rel_tol=rel_tol,
                 ignore_spaces=ignore_spaces,
