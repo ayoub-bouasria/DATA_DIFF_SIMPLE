@@ -1,0 +1,3 @@
+UC,Source_Dest,PROJECTO,TYPE,TYPE_NORMALIZED,NAME,NAME_RESOLVED,IS_DYNAMIC,DYNAMIC_PATTERNS,HAS_WILDCARD,REGEX_PATTERN,STATUT,Oney,Comments
+1,OUT,ALTI 3,Table,Table,pagos_recobro_&fec_mesant.,pagos_recobro_202512,True,&fec_mesant.,False,,~,SHARED_DB.ESD_ALTITUDE.PAGOS_RECOBRO_202512,ESP_RISK
+1,OUT,ALTI 3,Fichier,File,Stockrecobros&fec_mesant._cierre.txt,Stockrecobros202512_cierre.txt,True,&fec_mesant.,False,,OK,,

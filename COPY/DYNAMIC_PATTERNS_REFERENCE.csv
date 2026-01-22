@@ -1,0 +1,24 @@
+PATTERN,DESCRIPTION,EXAMPLE_VALUE,OCCURRENCES
+&aniomes,Year + Month (YYYYMM),202601,2
+&aniomes.,Year + Month (YYYYMM),202601,2
+&hoy,Today (YYYYMMDD),20260115,6
+&hoy.,Today (YYYYMMDD),20260115,6
+&ayer,Yesterday (YYYYMMDD),20260114,1
+&ayer.,Yesterday (YYYYMMDD),20260114,1
+&dia_sig,Tomorrow (YYYYMMDD),20260116,25
+&dia_sig.,Tomorrow (YYYYMMDD),20260116,25
+&dia,Current day (YYYYMMDD),20260115,42
+&dia.,Current day (YYYYMMDD),20260115,17
+&fec_mes,Current month (YYYYMM),202601,25
+&fec_mes.,Current month (YYYYMM),202601,13
+&fec_mes1.,Month -1 (YYYYMM),202512,1
+&fec_mes2.,Month -2 (YYYYMM),202511,1
+&fec_mes3.,Month -3 (YYYYMM),202510,1
+&fec_mes4.,Month -4 (YYYYMM),202509,1
+&fec_mes5.,Month -5 (YYYYMM),202508,1
+&fec_mesant,Previous month (YYYYMM),202512,7
+&fec_mesant.,Previous month (YYYYMM),202512,7
+&hhmmss,Time (HHMMSS),000000,4
+&hhmmss.,Time (HHMMSS),000000,4
+&laborable,Business day (YYYYMMDD),20260115,2
+&laborable.,Business day (YYYYMMDD),20260115,2

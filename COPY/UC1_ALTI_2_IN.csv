@@ -1,0 +1,21 @@
+UC,Source_Dest,PROJECTO,TYPE,TYPE_NORMALIZED,NAME,NAME_RESOLVED,IS_DYNAMIC,DYNAMIC_PATTERNS,HAS_WILDCARD,REGEX_PATTERN,STATUT,Oney,Comments
+1,IN,ALTI 2,Table,Table,altitude_&dia_sig._temp,altitude_20260116_temp,True,&dia_sig.,False,,OK,,
+1,IN,ALTI 2,Table,Table,stock_recobro_&fec_mes._temp,stock_recobro_202601_temp,True,&fec_mes.,False,,NO,shared_db.esd_altitude.stock_recobro_202601_temp,
+1,IN,ALTI 2,Table,Table,stock_recobro_&fec_mes.,stock_recobro_202601,True,&fec_mes.,False,,OK,shared_db.esd_altitude.stock_recobro_202601,
+1,IN,ALTI 2,Table,Table,stock_recobro_&fec_mesant.,stock_recobro_202512,True,&fec_mesant.,False,,OK,shared_db.esd_altitude.stock_recobro_202512,
+1,IN,ALTI 2,Table,Table,pagos_recobro_&fec_mes.,pagos_recobro_202601,True,&fec_mes.,False,,~,shared_db.esd_altitude.pagos_recobro_202601,ESP_RISK & ESD_ALTI
+1,IN,ALTI 2,Table,Table,pagos_recobro_&fec_mesant.,pagos_recobro_202512,True,&fec_mesant.,False,,~,shared_db.esd_altitude.pagos_recobro_202512,ESP_RISK & ESD_ALTI
+1,IN,ALTI 2,Table,Table,REC_PERSONAS,REC_PERSONAS,False,,False,,OK,,
+1,IN,ALTI 2,Table,Table,orden_venci,orden_venci,False,,False,,~,SHARED_DB.ESD_ALTITUDE.orden_venci,ESP_RISK
+1,IN,ALTI 2,Table,Table,histo_expe_Kineox,histo_expe_Kineox,False,,False,,~,from file DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/histo_expe_Kineox 20260112.txt,ESP_RISK
+1,IN,ALTI 2,Table,Table,histo_experian,histo_experian,False,,False,,OK,,
+1,IN,ALTI 2,Table,Table,tratamientos_v2,tratamientos_v2,False,,False,,~,SHARED_DB.ESD_ALTITUDE.tratamientos_v2,ESP_RISK
+1,IN,ALTI 2,Table,Table,F_ACCOUNT_BALANCE_DETAIL,F_ACCOUNT_BALANCE_DETAIL,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.F_ACCOUNT_BALANCE_DETAIL,BPES_DESPG & BRES_ESPG & SHARED DB
+1,IN,ALTI 2,Table,Table,F_ACCOUNT_BALANCE_DETAIL_current,F_ACCOUNT_BALANCE_DETAIL_current,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.F_ACCOUNT_BALANCE_DETAIL_CURRENT,BPES_DESPG & BRES_ESPG
+1,IN,ALTI 2,Table,Table,d_contract,d_contract,False,,False,,BPES_VIEW / BRS DSPG,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_CONTRACT,
+1,IN,ALTI 2,Table,Table,d_account,d_account,False,,False,,OK,,
+1,IN,ALTI 2,Table,Table,d_customer,d_customer,False,,False,,OK,,
+1,IN,ALTI 2,Table,Table,f_transactions,f_transactions,False,,False,,NO,BPES_DESPG.BPES_DESPG_VIEW_TRSN.F_TRANSACTIONS,
+1,IN,ALTI 2,Table,Table,account_link,account_link,False,,False,,NO,"see equivalence with Manuel, doesn't have the same name in Snowflake",
+1,IN,ALTI 2,Table,Table,xp_beneficiaire,xp_beneficiaire,False,,False,,NO,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_CONTRACT_LOYALTY_BENEFICIARY,
+1,IN,ALTI 2,Table,Table,base_final_direcciones_new,base_final_direcciones_new,False,,False,,OK,,

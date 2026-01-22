@@ -1,0 +1,4 @@
+UC,Source_Dest,PROJECTO,TYPE,TYPE_NORMALIZED,NAME,NAME_RESOLVED,IS_DYNAMIC,DYNAMIC_PATTERNS,HAS_WILDCARD,REGEX_PATTERN,STATUT,Oney,Comments
+1,OUT,,Table,Table,remesa_bbva_&hoy.,remesa_bbva_20260115,True,&hoy.,False,,NO,shared_db.esd_altitude.remesa_bbva_20260113,Only in Shared DB ESP_RISK
+1,OUT,,Table,Table,ficheros_e002_&hoy.,ficheros_e002_20260115,True,&hoy.,False,,NO,shared_db.esd_altitude.ficheros_e002_20260113,Only in Shared DB ESP_RISK
+1,OUT,,Table,Table,devoluciones_dia,devoluciones_dia,False,,False,,OK,,DEVOLUCIONES_20260113

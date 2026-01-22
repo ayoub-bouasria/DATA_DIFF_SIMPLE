@@ -1,0 +1,20 @@
+UC,Source_Dest,PROJECTO,TYPE,TYPE_NORMALIZED,NAME,NAME_RESOLVED,IS_DYNAMIC,DYNAMIC_PATTERNS,HAS_WILDCARD,REGEX_PATTERN,STATUT,Oney,Comments
+1,OUT,,Table,Table,remesa_bbva_&hoy.,remesa_bbva_20260115,True,&hoy.,False,,NO,shared_db.esd_altitude.remesa_bbva_20260113,Only in Shared DB ESP_RISK
+1,OUT,,Table,Table,ficheros_e002_&hoy.,ficheros_e002_20260115,True,&hoy.,False,,NO,shared_db.esd_altitude.ficheros_e002_20260113,Only in Shared DB ESP_RISK
+1,OUT,,Table,Table,devoluciones_dia,devoluciones_dia,False,,False,,OK,,DEVOLUCIONES_20260113
+1,OUT,ALTI 2,Table,Table,altitude_&dia_sig.,altitude_20260116,True,&dia_sig.,False,,NO,SHARED_DB.ESD_ALTITUDE.ALTITUDE_20260114,
+1,OUT,ALTI 2,Table,Table,stock_recobro_&fec_mes.,stock_recobro_202601,True,&fec_mes.,False,,OK,,
+1,OUT,ALTI 2,Table,Table,stock_recobro_&dia.,stock_recobro_20260115,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Table,Table,altitude_historico,altitude_historico,False,,False,,OK,,
+1,OUT,ALTI 2,Table,Table,altitude_current,altitude_current,False,,False,,OK,,
+1,OUT,ALTI 2,Table,Table,altitude_acum_&fec_mes.,altitude_acum_202601,True,&fec_mes.,False,,NO,SHARED_DB.ESD_ALTITUDE.ALTITUDE_ACUM_202601,
+1,OUT,ALTI 2,Table,Table,histo_eficacias,histo_eficacias,False,,False,,OK,,
+1,OUT,ALTI 2,Table,Table,intervinientes,intervinientes,False,,False,,NO,SHARED_DB.ESD_ALTITUDE.INTERVINIENTES,
+1,OUT,ALTI 2,Table,Table,histo_expe_Kineox,histo_expe_Kineox,False,,False,,NO,from file DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/histo_expe_Kineox 20260113.txt,
+1,OUT,ALTI 2,Table,Table,impagos_trc_&dia_sig.,impagos_trc_20260116,True,&dia_sig.,False,,NO,SHARED_DB.ESD_ALTITUDE.IMPAGOS_TRC_20260114,
+1,OUT,ALTI 2,Table,Table,clientes_trc_&dia_sig.,clientes_trc_20260116,True,&dia_sig.,False,,NO,SHARED_DB.ESD_ALTITUDE.clientes_trc_20260114,
+1,OUT,ALTI 3,Table,Table,pagos_recobro_&fec_mesant.,pagos_recobro_202512,True,&fec_mesant.,False,,~,SHARED_DB.ESD_ALTITUDE.PAGOS_RECOBRO_202512,ESP_RISK
+1,OUT,ALTI 4,Table,Table,stock_recobro_&fec_mes.01,stock_recobro_20260101,True,&fec_mes.,False,,~,SHARED_DB.ESD_ALTITUDE.STOCK_RECOBRO_20260101,CHECK ESP_RISK
+1,OUT,ALTI 4,Table,Table,stock_recobro_&fec_mes.,stock_recobro_202601,True,&fec_mes.,False,,~,SHARED_DB.ESD_ALTITUDE.STOCK_RECOBRO_202601,CHECK ESP_RISK
+1,OUT,ALTI 4,Table,Table,stock_dia1,stock_dia1,False,,False,,~,shared_db.esd_altitude.stock_dia1,CHECK ESP_RISK
+1,OUT,ALTI 4,Table,Table,recurrentes_&fec_mes.,recurrentes_202601,True,&fec_mes.,False,,~,SHARED_DB.ESD_ALTITUDE.RECURRENTES,CHECK ESP_RISK

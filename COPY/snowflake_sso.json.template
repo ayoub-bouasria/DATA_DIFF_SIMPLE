@@ -1,0 +1,9 @@
+{
+    "account": "your_account.region",
+    "user": "your_email@company.com",
+    "authenticator": "externalbrowser",
+    "warehouse": "YOUR_WAREHOUSE",
+    "database": "TEAM_DB",
+    "schema": "EXTERNAL",
+    "role": "YOUR_ROLE"
+}

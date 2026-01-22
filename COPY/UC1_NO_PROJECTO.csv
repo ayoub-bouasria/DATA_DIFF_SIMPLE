@@ -1,0 +1,19 @@
+UC,Source_Dest,PROJECTO,TYPE,TYPE_NORMALIZED,NAME,NAME_RESOLVED,IS_DYNAMIC,DYNAMIC_PATTERNS,HAS_WILDCARD,REGEX_PATTERN,STATUT,Oney,Comments
+1,IN,,Table,Table,stock_recobro_&aniomes.,stock_recobro_202601,True,&aniomes.,False,,OK,,Inside UC1/OUTPUT instead of UC1/INPUT
+1,IN,,Table,Table,ficheros_e002_&ayer.,ficheros_e002_20260114,True,&ayer.,False,,NO,shared_db.esd_altitude.ficheros_e002_20260112,Not find : Only FICHEROS_E002 inside tables
+1,IN,,File,File,devol_rps.txt,devol_rps.txt,False,,False,,OK,,
+1,IN,,File,File,SIBS*.txt(E002),SIBS*.txt(E002),False,,True,^SIBS.*\.txt\(E002\)$,OK,,SIBS_META-E002_REI-A1303055.txt
+1,OUT,,Table,Table,remesa_bbva_&hoy.,remesa_bbva_20260115,True,&hoy.,False,,NO,shared_db.esd_altitude.remesa_bbva_20260113,Only in Shared DB ESP_RISK
+1,OUT,,Table,Table,ficheros_e002_&hoy.,ficheros_e002_20260115,True,&hoy.,False,,NO,shared_db.esd_altitude.ficheros_e002_20260113,Only in Shared DB ESP_RISK
+1,OUT,,Table,Table,devoluciones_dia,devoluciones_dia,False,,False,,OK,,DEVOLUCIONES_20260113
+1,IN,,Table,Table,F_ACCOUNT_BALANCE_DETAIL,F_ACCOUNT_BALANCE_DETAIL,False,,False,,OK,,
+1,IN,,Table,Table,F_ACCOUNT_BALANCE_DETAIL_current,F_ACCOUNT_BALANCE_DETAIL_current,False,,False,,OK,,
+1,IN,,Table,Table,d_contract,d_contract,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_CONTRACT,
+1,IN,,Table,Table,d_account,d_account,False,,False,,OK,,
+1,IN,,Table,Table,d_customer,d_customer,False,,False,,OK,,
+1,IN,,Table,Table,ext_termpayment_bnpl,ext_termpayment_bnpl,False,,False,,OK,,Point already in Snowflake
+1,IN,,Table,Table,ext_proposal_bnpl,ext_proposal_bnpl,False,,False,,OK,,Point already in Snowflake : ESP_DATA
+1,IN,,Table,Table,ext_termpaymentdetl_bnpl,ext_termpaymentdetl_bnpl,False,,False,,OK,,Point already in Snowflake : ext_proposal_bnpl
+1,IN,,Table,Table,ext_customer_bnpl,ext_customer_bnpl,False,,False,,OK,,Point in ESD_DATAMKT
+1,IN,,Table,Table,stock_recobro_&fec_mes.,stock_recobro_202601,True,&fec_mes.,False,,OK,,ESP_RISK & ESP_ALTI
+1,IN,,Fichier,File,Telefonos_Prestatarios_yyyymmdd.txt,Telefonos_Prestatarios_yyyymmdd.txt,False,,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/telefonos_prestatarios_2020092.txt,

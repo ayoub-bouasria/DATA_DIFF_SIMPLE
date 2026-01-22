@@ -1,0 +1,8 @@
+UC,Source_Dest,PROJECTO,TYPE,TYPE_NORMALIZED,NAME,NAME_RESOLVED,IS_DYNAMIC,DYNAMIC_PATTERNS,HAS_WILDCARD,REGEX_PATTERN,STATUT,Oney,Comments
+1,IN,,File,File,devol_rps.txt,devol_rps.txt,False,,False,,OK,,
+1,IN,,File,File,SIBS*.txt(E002),SIBS*.txt(E002),False,,True,^SIBS.*\.txt\(E002\)$,OK,,SIBS_META-E002_REI-A1303055.txt
+1,IN,,Fichier,File,Telefonos_Prestatarios_yyyymmdd.txt,Telefonos_Prestatarios_yyyymmdd.txt,False,,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/telefonos_prestatarios_2020092.txt,
+1,IN,ALTI 4,Fichier,File,quitas.txt,quitas.txt,False,,False,,~,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,INPUT
+1,IN,ALTI 4,Fichier,File,quitas_curso.txt,quitas_curso.txt,False,,False,,~,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,SILAMIR/UC2/IN/quitas_curso_20180531.txt
+1,IN,ALTI 4,Fichier,File,ALTI-Contratosficticios.txt,ALTI-Contratosficticios.txt,False,,False,,OK,,
+1,IN,ALTI 4,Fichier,File,Pactos_&fec_mesant..txt,Pactos_202512.txt,True,&fec_mesant.,False,,OK,,

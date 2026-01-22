@@ -1,0 +1,55 @@
+UC,Source_Dest,PROJECTO,TYPE,TYPE_NORMALIZED,NAME,NAME_RESOLVED,IS_DYNAMIC,DYNAMIC_PATTERNS,HAS_WILDCARD,REGEX_PATTERN,STATUT,Oney,Comments
+1,IN,,File,File,devol_rps.txt,devol_rps.txt,False,,False,,OK,,
+1,IN,,File,File,SIBS*.txt(E002),SIBS*.txt(E002),False,,True,^SIBS.*\.txt\(E002\)$,OK,,SIBS_META-E002_REI-A1303055.txt
+1,IN,,Fichier,File,Telefonos_Prestatarios_yyyymmdd.txt,Telefonos_Prestatarios_yyyymmdd.txt,False,,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/telefonos_prestatarios_2020092.txt,
+1,OUT,ALTI 2,Fichier,File,impagos_&dia_sig..csv,impagos_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,clientes_&dia_sig..csv,clientes_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,cuotas_impagadas_&dia_sig..csv,cuotas_impagadas_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,pagos_&dia_sig..csv,pagos_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,telefonos_&dia_sig..csv,telefonos_20260116.csv,True,&dia_sig.,False,,OK,,ESP_RISK
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_todos_&dia_sig..txt,complemento_altitude_todos_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,impagos_&dia_sig._codeactivos.XLSX,impagos_20260116_codeactivos.XLSX,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,impagos_&dia_sig._marktel.xlsx,impagos_20260116_marktel.xlsx,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_codeact_cont_&dia_sig..txt,complemento_altitude_codeact_cont_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_precodeact_cont_&dia_sig..txt,complemento_altitude_precodeact_cont_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_RACMO_&dia_sig..txt,complemento_altitude_RACMO_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_marktel_&dia_sig..txt,complemento_altitude_marktel_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_alth_&dia_sig..txt,complemento_altitude_alth_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_gescosa_pre_&dia_sig..txt,complemento_altitude_gescosa_pre_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_gescosa_ctx_&dia_sig..txt,complemento_altitude_gescosa_ctx_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_&dia_sig._detec_telefonos.txt,complemento_altitude_20260116_detec_telefonos.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,cotitulares_recobro_&dia_sig..txt,cotitulares_recobro_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,cotitulares_CODEACTIVOS_&dia_sig..csv,cotitulares_CODEACTIVOS_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,cotitulares_RACMO_&dia_sig..csv,cotitulares_RACMO_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,cotitulares_MARKTEL_&dia_sig..csv,cotitulares_MARKTEL_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,Asignaciones_Interno_&dia..csv,Asignaciones_Interno_20260115.csv,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,&dia.Efikazias&laborable..txt,20260115Efikazias20260115.txt,True,&dia.|&laborable.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,&dia.Eficacias&laborable..txt,20260115Eficacias20260115.txt,True,&dia.|&laborable.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,Stockrecobros&dia..txt,Stockrecobros20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,Altitude_acumulado_&fec_mes..csv,Altitude_acumulado_202601.csv,True,&fec_mes.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,Seguimiento_eficacias_&fec_mes..xls,Seguimiento_eficacias_202601.xls,True,&fec_mes.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,Repartoplataformasrecobro&dia_sig..xls,Repartoplataformasrecobro20260116.xls,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_codeactivos_ctx&dia..txt,eficacia_pagos_codeactivos_ctx20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_codeactivos_pre&dia..txt,eficacia_pagos_codeactivos_pre20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_EIPRE&dia..txt,eficacia_pagos_EIPRE20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_EICTX&dia..txt,eficacia_pagos_EICTX20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_agesco_ctx&dia..txt,eficacia_pagos_agesco_ctx20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_racmo&dia..txt,eficacia_pagos_racmo20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_total_ctx&dia..txt,eficacia_pagos_total_ctx20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_total_pre&dia..txt,eficacia_pagos_total_pre20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_inco_ctx&dia..txt,eficacia_pagos_inco_ctx20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_marktel_pre&dia..txt,eficacia_pagos_marktel_pre20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_marktel_ctx&dia..txt,eficacia_pagos_marktel_ctx20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,histo_expe_Kineox&dia..txt,histo_expe_Kineox20260115.txt,True,&dia.,False,,~,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,ESP_RISK
+1,OUT,ALTI 3,Fichier,File,Stockrecobros&fec_mesant._cierre.txt,Stockrecobros202512_cierre.txt,True,&fec_mesant.,False,,OK,,
+1,IN,ALTI 4,Fichier,File,quitas.txt,quitas.txt,False,,False,,~,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,INPUT
+1,IN,ALTI 4,Fichier,File,quitas_curso.txt,quitas_curso.txt,False,,False,,~,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,SILAMIR/UC2/IN/quitas_curso_20180531.txt
+1,IN,ALTI 4,Fichier,File,ALTI-Contratosficticios.txt,ALTI-Contratosficticios.txt,False,,False,,OK,,
+1,IN,ALTI 4,Fichier,File,Pactos_&fec_mesant..txt,Pactos_202512.txt,True,&fec_mesant.,False,,OK,,
+1,OUT,ALTI 4,Fichier,File,Saltodetramo&fec_mes.01.csv,Saltodetramo20260101.csv,True,&fec_mes.,False,,OK,,Saut de tranche
+1,OUT,ALTI 4,Fichier,File,quitas&fec_mes.01.txt,quitas20260101.txt,True,&fec_mes.,False,,OK,,Quitas du mois (backup)
+1,OUT,ALTI 4,Fichier,File,PPtauxdeprov100%&fec_mesant..txt,PPtauxdeprov100%202512.txt,True,&fec_mesant.,False,,OK,,Taux provision 100%
+1,OUT,ALTI 4,Fichier,File,STATUS_&hoy..&hhmmss.,STATUS_20260115.000000,True,&hoy.|&hhmmss.,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,Fichier changement etat CTX
+1,OUT,ALTI 4,Fichier,File,CANCELAR_TJ_PWC_CTX_&hoy..&hhmmss..txt,CANCELAR_TJ_PWC_CTX_20260115.000000.txt,True,&hoy.|&hhmmss.,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,Annulation cartes PWC
+1,OUT,ALTI 4,Fichier,File,DEP_CTX_&hoy..&hhmmss..csv,DEP_CTX_20260115.000000.csv,True,&hoy.|&hhmmss.,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,Baisse limite CTX
+1,OUT,ALTI 4,Fichier,File,INSERTAR_MEMO_CTX_&hoy..&hhmmss..csv,INSERTAR_MEMO_CTX_20260115.000000.csv,True,&hoy.|&hhmmss.,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,Insertion memo CTX

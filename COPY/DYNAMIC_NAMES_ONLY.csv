@@ -1,0 +1,77 @@
+UC,Source_Dest,PROJECTO,TYPE,TYPE_NORMALIZED,NAME,NAME_RESOLVED,IS_DYNAMIC,DYNAMIC_PATTERNS,HAS_WILDCARD,REGEX_PATTERN,STATUT,Oney,Comments
+1,IN,,Table,Table,stock_recobro_&aniomes.,stock_recobro_202601,True,&aniomes.,False,,OK,,Inside UC1/OUTPUT instead of UC1/INPUT
+1,IN,,Table,Table,ficheros_e002_&ayer.,ficheros_e002_20260114,True,&ayer.,False,,NO,shared_db.esd_altitude.ficheros_e002_20260112,Not find : Only FICHEROS_E002 inside tables
+1,OUT,,Table,Table,remesa_bbva_&hoy.,remesa_bbva_20260115,True,&hoy.,False,,NO,shared_db.esd_altitude.remesa_bbva_20260113,Only in Shared DB ESP_RISK
+1,OUT,,Table,Table,ficheros_e002_&hoy.,ficheros_e002_20260115,True,&hoy.,False,,NO,shared_db.esd_altitude.ficheros_e002_20260113,Only in Shared DB ESP_RISK
+1,IN,,Table,Table,stock_recobro_&fec_mes.,stock_recobro_202601,True,&fec_mes.,False,,OK,,ESP_RISK & ESP_ALTI
+1,IN,ALTI 2,Table,Table,altitude_&dia_sig._temp,altitude_20260116_temp,True,&dia_sig.,False,,OK,,
+1,IN,ALTI 2,Table,Table,stock_recobro_&fec_mes._temp,stock_recobro_202601_temp,True,&fec_mes.,False,,NO,shared_db.esd_altitude.stock_recobro_202601_temp,
+1,IN,ALTI 2,Table,Table,stock_recobro_&fec_mes.,stock_recobro_202601,True,&fec_mes.,False,,OK,shared_db.esd_altitude.stock_recobro_202601,
+1,IN,ALTI 2,Table,Table,stock_recobro_&fec_mesant.,stock_recobro_202512,True,&fec_mesant.,False,,OK,shared_db.esd_altitude.stock_recobro_202512,
+1,IN,ALTI 2,Table,Table,pagos_recobro_&fec_mes.,pagos_recobro_202601,True,&fec_mes.,False,,~,shared_db.esd_altitude.pagos_recobro_202601,ESP_RISK & ESD_ALTI
+1,IN,ALTI 2,Table,Table,pagos_recobro_&fec_mesant.,pagos_recobro_202512,True,&fec_mesant.,False,,~,shared_db.esd_altitude.pagos_recobro_202512,ESP_RISK & ESD_ALTI
+1,OUT,ALTI 2,Table,Table,altitude_&dia_sig.,altitude_20260116,True,&dia_sig.,False,,NO,SHARED_DB.ESD_ALTITUDE.ALTITUDE_20260114,
+1,OUT,ALTI 2,Table,Table,stock_recobro_&fec_mes.,stock_recobro_202601,True,&fec_mes.,False,,OK,,
+1,OUT,ALTI 2,Table,Table,stock_recobro_&dia.,stock_recobro_20260115,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Table,Table,altitude_acum_&fec_mes.,altitude_acum_202601,True,&fec_mes.,False,,NO,SHARED_DB.ESD_ALTITUDE.ALTITUDE_ACUM_202601,
+1,OUT,ALTI 2,Table,Table,impagos_trc_&dia_sig.,impagos_trc_20260116,True,&dia_sig.,False,,NO,SHARED_DB.ESD_ALTITUDE.IMPAGOS_TRC_20260114,
+1,OUT,ALTI 2,Table,Table,clientes_trc_&dia_sig.,clientes_trc_20260116,True,&dia_sig.,False,,NO,SHARED_DB.ESD_ALTITUDE.clientes_trc_20260114,
+1,OUT,ALTI 2,Fichier,File,impagos_&dia_sig..csv,impagos_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,clientes_&dia_sig..csv,clientes_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,cuotas_impagadas_&dia_sig..csv,cuotas_impagadas_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,pagos_&dia_sig..csv,pagos_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,telefonos_&dia_sig..csv,telefonos_20260116.csv,True,&dia_sig.,False,,OK,,ESP_RISK
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_todos_&dia_sig..txt,complemento_altitude_todos_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,impagos_&dia_sig._codeactivos.XLSX,impagos_20260116_codeactivos.XLSX,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,impagos_&dia_sig._marktel.xlsx,impagos_20260116_marktel.xlsx,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_codeact_cont_&dia_sig..txt,complemento_altitude_codeact_cont_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_precodeact_cont_&dia_sig..txt,complemento_altitude_precodeact_cont_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_RACMO_&dia_sig..txt,complemento_altitude_RACMO_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_marktel_&dia_sig..txt,complemento_altitude_marktel_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_alth_&dia_sig..txt,complemento_altitude_alth_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_gescosa_pre_&dia_sig..txt,complemento_altitude_gescosa_pre_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_gescosa_ctx_&dia_sig..txt,complemento_altitude_gescosa_ctx_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,complemento_altitude_&dia_sig._detec_telefonos.txt,complemento_altitude_20260116_detec_telefonos.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,cotitulares_recobro_&dia_sig..txt,cotitulares_recobro_20260116.txt,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,cotitulares_CODEACTIVOS_&dia_sig..csv,cotitulares_CODEACTIVOS_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,cotitulares_RACMO_&dia_sig..csv,cotitulares_RACMO_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,cotitulares_MARKTEL_&dia_sig..csv,cotitulares_MARKTEL_20260116.csv,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,Asignaciones_Interno_&dia..csv,Asignaciones_Interno_20260115.csv,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,&dia.Efikazias&laborable..txt,20260115Efikazias20260115.txt,True,&dia.|&laborable.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,&dia.Eficacias&laborable..txt,20260115Eficacias20260115.txt,True,&dia.|&laborable.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,Stockrecobros&dia..txt,Stockrecobros20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,Altitude_acumulado_&fec_mes..csv,Altitude_acumulado_202601.csv,True,&fec_mes.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,Seguimiento_eficacias_&fec_mes..xls,Seguimiento_eficacias_202601.xls,True,&fec_mes.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,Repartoplataformasrecobro&dia_sig..xls,Repartoplataformasrecobro20260116.xls,True,&dia_sig.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_codeactivos_ctx&dia..txt,eficacia_pagos_codeactivos_ctx20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_codeactivos_pre&dia..txt,eficacia_pagos_codeactivos_pre20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_EIPRE&dia..txt,eficacia_pagos_EIPRE20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_EICTX&dia..txt,eficacia_pagos_EICTX20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_agesco_ctx&dia..txt,eficacia_pagos_agesco_ctx20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_racmo&dia..txt,eficacia_pagos_racmo20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_total_ctx&dia..txt,eficacia_pagos_total_ctx20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_total_pre&dia..txt,eficacia_pagos_total_pre20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_inco_ctx&dia..txt,eficacia_pagos_inco_ctx20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_marktel_pre&dia..txt,eficacia_pagos_marktel_pre20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,eficacia_pagos_marktel_ctx&dia..txt,eficacia_pagos_marktel_ctx20260115.txt,True,&dia.,False,,OK,,
+1,OUT,ALTI 2,Fichier,File,histo_expe_Kineox&dia..txt,histo_expe_Kineox20260115.txt,True,&dia.,False,,~,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,ESP_RISK
+1,OUT,ALTI 3,Table,Table,pagos_recobro_&fec_mesant.,pagos_recobro_202512,True,&fec_mesant.,False,,~,SHARED_DB.ESD_ALTITUDE.PAGOS_RECOBRO_202512,ESP_RISK
+1,OUT,ALTI 3,Fichier,File,Stockrecobros&fec_mesant._cierre.txt,Stockrecobros202512_cierre.txt,True,&fec_mesant.,False,,OK,,
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mesant.,stock_recobro_202512,True,&fec_mesant.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes1.,stock_recobro_202512,True,&fec_mes1.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes2.,stock_recobro_202511,True,&fec_mes2.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes3.,stock_recobro_202510,True,&fec_mes3.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes4.,stock_recobro_202509,True,&fec_mes4.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes5.,stock_recobro_202508,True,&fec_mes5.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,card_&aniomes.,card_202601,True,&aniomes.,False,,~,SHARED_DB.ESD_ALTITUDE.CARD_202601,ESD Altitude ?
+1,IN,ALTI 4,Fichier,File,Pactos_&fec_mesant..txt,Pactos_202512.txt,True,&fec_mesant.,False,,OK,,
+1,OUT,ALTI 4,Table,Table,stock_recobro_&fec_mes.01,stock_recobro_20260101,True,&fec_mes.,False,,~,SHARED_DB.ESD_ALTITUDE.STOCK_RECOBRO_20260101,CHECK ESP_RISK
+1,OUT,ALTI 4,Table,Table,stock_recobro_&fec_mes.,stock_recobro_202601,True,&fec_mes.,False,,~,SHARED_DB.ESD_ALTITUDE.STOCK_RECOBRO_202601,CHECK ESP_RISK
+1,OUT,ALTI 4,Table,Table,recurrentes_&fec_mes.,recurrentes_202601,True,&fec_mes.,False,,~,SHARED_DB.ESD_ALTITUDE.RECURRENTES,CHECK ESP_RISK
+1,OUT,ALTI 4,Fichier,File,Saltodetramo&fec_mes.01.csv,Saltodetramo20260101.csv,True,&fec_mes.,False,,OK,,Saut de tranche
+1,OUT,ALTI 4,Fichier,File,quitas&fec_mes.01.txt,quitas20260101.txt,True,&fec_mes.,False,,OK,,Quitas du mois (backup)
+1,OUT,ALTI 4,Fichier,File,PPtauxdeprov100%&fec_mesant..txt,PPtauxdeprov100%202512.txt,True,&fec_mesant.,False,,OK,,Taux provision 100%
+1,OUT,ALTI 4,Fichier,File,STATUS_&hoy..&hhmmss.,STATUS_20260115.000000,True,&hoy.|&hhmmss.,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,Fichier changement etat CTX
+1,OUT,ALTI 4,Fichier,File,CANCELAR_TJ_PWC_CTX_&hoy..&hhmmss..txt,CANCELAR_TJ_PWC_CTX_20260115.000000.txt,True,&hoy.|&hhmmss.,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,Annulation cartes PWC
+1,OUT,ALTI 4,Fichier,File,DEP_CTX_&hoy..&hhmmss..csv,DEP_CTX_20260115.000000.csv,True,&hoy.|&hhmmss.,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,Baisse limite CTX
+1,OUT,ALTI 4,Fichier,File,INSERTAR_MEMO_CTX_&hoy..&hhmmss..csv,INSERTAR_MEMO_CTX_20260115.000000.csv,True,&hoy.|&hhmmss.,False,,NO,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,Insertion memo CTX

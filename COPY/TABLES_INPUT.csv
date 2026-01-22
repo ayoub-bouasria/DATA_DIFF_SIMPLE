@@ -1,0 +1,46 @@
+UC,Source_Dest,PROJECTO,TYPE,TYPE_NORMALIZED,NAME,NAME_RESOLVED,IS_DYNAMIC,DYNAMIC_PATTERNS,HAS_WILDCARD,REGEX_PATTERN,STATUT,Oney,Comments
+1,IN,,Table,Table,stock_recobro_&aniomes.,stock_recobro_202601,True,&aniomes.,False,,OK,,Inside UC1/OUTPUT instead of UC1/INPUT
+1,IN,,Table,Table,ficheros_e002_&ayer.,ficheros_e002_20260114,True,&ayer.,False,,NO,shared_db.esd_altitude.ficheros_e002_20260112,Not find : Only FICHEROS_E002 inside tables
+1,IN,,Table,Table,F_ACCOUNT_BALANCE_DETAIL,F_ACCOUNT_BALANCE_DETAIL,False,,False,,OK,,
+1,IN,,Table,Table,F_ACCOUNT_BALANCE_DETAIL_current,F_ACCOUNT_BALANCE_DETAIL_current,False,,False,,OK,,
+1,IN,,Table,Table,d_contract,d_contract,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_CONTRACT,
+1,IN,,Table,Table,d_account,d_account,False,,False,,OK,,
+1,IN,,Table,Table,d_customer,d_customer,False,,False,,OK,,
+1,IN,,Table,Table,ext_termpayment_bnpl,ext_termpayment_bnpl,False,,False,,OK,,Point already in Snowflake
+1,IN,,Table,Table,ext_proposal_bnpl,ext_proposal_bnpl,False,,False,,OK,,Point already in Snowflake : ESP_DATA
+1,IN,,Table,Table,ext_termpaymentdetl_bnpl,ext_termpaymentdetl_bnpl,False,,False,,OK,,Point already in Snowflake : ext_proposal_bnpl
+1,IN,,Table,Table,ext_customer_bnpl,ext_customer_bnpl,False,,False,,OK,,Point in ESD_DATAMKT
+1,IN,,Table,Table,stock_recobro_&fec_mes.,stock_recobro_202601,True,&fec_mes.,False,,OK,,ESP_RISK & ESP_ALTI
+1,IN,ALTI 2,Table,Table,altitude_&dia_sig._temp,altitude_20260116_temp,True,&dia_sig.,False,,OK,,
+1,IN,ALTI 2,Table,Table,stock_recobro_&fec_mes._temp,stock_recobro_202601_temp,True,&fec_mes.,False,,NO,shared_db.esd_altitude.stock_recobro_202601_temp,
+1,IN,ALTI 2,Table,Table,stock_recobro_&fec_mes.,stock_recobro_202601,True,&fec_mes.,False,,OK,shared_db.esd_altitude.stock_recobro_202601,
+1,IN,ALTI 2,Table,Table,stock_recobro_&fec_mesant.,stock_recobro_202512,True,&fec_mesant.,False,,OK,shared_db.esd_altitude.stock_recobro_202512,
+1,IN,ALTI 2,Table,Table,pagos_recobro_&fec_mes.,pagos_recobro_202601,True,&fec_mes.,False,,~,shared_db.esd_altitude.pagos_recobro_202601,ESP_RISK & ESD_ALTI
+1,IN,ALTI 2,Table,Table,pagos_recobro_&fec_mesant.,pagos_recobro_202512,True,&fec_mesant.,False,,~,shared_db.esd_altitude.pagos_recobro_202512,ESP_RISK & ESD_ALTI
+1,IN,ALTI 2,Table,Table,REC_PERSONAS,REC_PERSONAS,False,,False,,OK,,
+1,IN,ALTI 2,Table,Table,orden_venci,orden_venci,False,,False,,~,SHARED_DB.ESD_ALTITUDE.orden_venci,ESP_RISK
+1,IN,ALTI 2,Table,Table,histo_expe_Kineox,histo_expe_Kineox,False,,False,,~,from file DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/histo_expe_Kineox 20260112.txt,ESP_RISK
+1,IN,ALTI 2,Table,Table,histo_experian,histo_experian,False,,False,,OK,,
+1,IN,ALTI 2,Table,Table,tratamientos_v2,tratamientos_v2,False,,False,,~,SHARED_DB.ESD_ALTITUDE.tratamientos_v2,ESP_RISK
+1,IN,ALTI 2,Table,Table,F_ACCOUNT_BALANCE_DETAIL,F_ACCOUNT_BALANCE_DETAIL,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.F_ACCOUNT_BALANCE_DETAIL,BPES_DESPG & BRES_ESPG & SHARED DB
+1,IN,ALTI 2,Table,Table,F_ACCOUNT_BALANCE_DETAIL_current,F_ACCOUNT_BALANCE_DETAIL_current,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.F_ACCOUNT_BALANCE_DETAIL_CURRENT,BPES_DESPG & BRES_ESPG
+1,IN,ALTI 2,Table,Table,d_contract,d_contract,False,,False,,BPES_VIEW / BRS DSPG,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_CONTRACT,
+1,IN,ALTI 2,Table,Table,d_account,d_account,False,,False,,OK,,
+1,IN,ALTI 2,Table,Table,d_customer,d_customer,False,,False,,OK,,
+1,IN,ALTI 2,Table,Table,f_transactions,f_transactions,False,,False,,NO,BPES_DESPG.BPES_DESPG_VIEW_TRSN.F_TRANSACTIONS,
+1,IN,ALTI 2,Table,Table,account_link,account_link,False,,False,,NO,"see equivalence with Manuel, doesn't have the same name in Snowflake",
+1,IN,ALTI 2,Table,Table,xp_beneficiaire,xp_beneficiaire,False,,False,,NO,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_CONTRACT_LOYALTY_BENEFICIARY,
+1,IN,ALTI 2,Table,Table,base_final_direcciones_new,base_final_direcciones_new,False,,False,,OK,,
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mesant.,stock_recobro_202512,True,&fec_mesant.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes1.,stock_recobro_202512,True,&fec_mes1.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes2.,stock_recobro_202511,True,&fec_mes2.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes3.,stock_recobro_202510,True,&fec_mes3.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes4.,stock_recobro_202509,True,&fec_mes4.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes5.,stock_recobro_202508,True,&fec_mes5.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,F_ACCOUNT_BALANCE_DETAIL,F_ACCOUNT_BALANCE_DETAIL,False,,False,,OK,,SAME
+1,IN,ALTI 4,Table,Table,d_contract,d_contract,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_CONTRACT,
+1,IN,ALTI 4,Table,Table,d_account,d_account,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_ACCOUNT,
+1,IN,ALTI 4,Table,Table,D_CARD,D_CARD,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_CARD,
+1,IN,ALTI 4,Table,Table,tratamientos_v2,tratamientos_v2,False,,False,,~,SHARED_DB.ESD_ALTITUDE.tratamientos_v2,ESP_RISK
+1,IN,ALTI 4,Table,Table,Impago_exp_venta_*,Impago_exp_venta_*,False,,True,^Impago_exp_venta_.*$,~,SHARED_DB.ESD_ALTITUDE.IMPAGO_EXP_VENTA_202512,ESP_RISK
+1,IN,ALTI 4,Table,Table,card_&aniomes.,card_202601,True,&aniomes.,False,,~,SHARED_DB.ESD_ALTITUDE.CARD_202601,ESD Altitude ?

@@ -1,0 +1,18 @@
+UC,Source_Dest,PROJECTO,TYPE,TYPE_NORMALIZED,NAME,NAME_RESOLVED,IS_DYNAMIC,DYNAMIC_PATTERNS,HAS_WILDCARD,REGEX_PATTERN,STATUT,Oney,Comments
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mesant.,stock_recobro_202512,True,&fec_mesant.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes1.,stock_recobro_202512,True,&fec_mes1.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes2.,stock_recobro_202511,True,&fec_mes2.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes3.,stock_recobro_202510,True,&fec_mes3.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes4.,stock_recobro_202509,True,&fec_mes4.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,stock_recobro_&fec_mes5.,stock_recobro_202508,True,&fec_mes5.,False,,OK,,CHECK ESP_RISK
+1,IN,ALTI 4,Table,Table,F_ACCOUNT_BALANCE_DETAIL,F_ACCOUNT_BALANCE_DETAIL,False,,False,,OK,,SAME
+1,IN,ALTI 4,Table,Table,d_contract,d_contract,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_CONTRACT,
+1,IN,ALTI 4,Table,Table,d_account,d_account,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_ACCOUNT,
+1,IN,ALTI 4,Table,Table,D_CARD,D_CARD,False,,False,,~,BPES_DESPG.BPES_DESPG_VIEW_CTRA.D_CARD,
+1,IN,ALTI 4,Table,Table,tratamientos_v2,tratamientos_v2,False,,False,,~,SHARED_DB.ESD_ALTITUDE.tratamientos_v2,ESP_RISK
+1,IN,ALTI 4,Table,Table,Impago_exp_venta_*,Impago_exp_venta_*,False,,True,^Impago_exp_venta_.*$,~,SHARED_DB.ESD_ALTITUDE.IMPAGO_EXP_VENTA_202512,ESP_RISK
+1,IN,ALTI 4,Table,Table,card_&aniomes.,card_202601,True,&aniomes.,False,,~,SHARED_DB.ESD_ALTITUDE.CARD_202601,ESD Altitude ?
+1,IN,ALTI 4,Fichier,File,quitas.txt,quitas.txt,False,,False,,~,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,INPUT
+1,IN,ALTI 4,Fichier,File,quitas_curso.txt,quitas_curso.txt,False,,False,,~,AZURE -- DATA_SUPPORT/ficinftp/SILAMIR/UC1/IN/,SILAMIR/UC2/IN/quitas_curso_20180531.txt
+1,IN,ALTI 4,Fichier,File,ALTI-Contratosficticios.txt,ALTI-Contratosficticios.txt,False,,False,,OK,,
+1,IN,ALTI 4,Fichier,File,Pactos_&fec_mesant..txt,Pactos_202512.txt,True,&fec_mesant.,False,,OK,,
